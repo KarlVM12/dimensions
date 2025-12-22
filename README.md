@@ -68,9 +68,16 @@ cargo build --release
 ### Install Globally
 
 ```bash
+# Install via cargo (recommended)
 cargo install --path .
-# Or copy the binary
-cp target/release/dimensions /usr/local/bin/dim
+
+# Make sure ~/.cargo/bin is in your PATH
+# Add to ~/.zshrc (or ~/.bashrc):
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Now you can run from anywhere:
+dimensions
 ```
 
 ## Usage
