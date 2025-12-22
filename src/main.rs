@@ -23,9 +23,22 @@ fn main() -> Result<()> {
     }
 
     // Setup terminal
-    enable_raw_mode()?;
+    if let Err(e) = enable_raw_mode() {
+        eprintln!("Error: Cannot start Dimensions from within another TUI application.");
+        eprintln!("       If you're in nvim/vim, exit first or use a tmux keybinding.");
+        eprintln!("       Try: Press Ctrl+B then run 'dimensions' in a new window.");
+        eprintln!("\nTechnical error: {:?}", e);
+        std::process::exit(1);
+    }
+
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    if let Err(e) = execute!(stdout, EnterAlternateScreen, EnableMouseCapture) {
+        eprintln!("Error: Cannot initialize terminal interface.");
+        eprintln!("       Make sure you're running this in a proper terminal.");
+        eprintln!("\nTechnical error: {:?}", e);
+        std::process::exit(1);
+    }
+
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
