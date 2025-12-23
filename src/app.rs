@@ -1,6 +1,8 @@
 use crate::dimension::{Dimension, DimensionConfig, Tab};
 use crate::tmux::Tmux;
 use anyhow::Result;
+use fuzzy_matcher::FuzzyMatcher;
+use fuzzy_matcher::skim::SkimMatcherV2;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InputMode {
@@ -11,6 +13,23 @@ pub enum InputMode {
     Searching,
 }
 
+#[derive(Debug, Clone)]
+pub enum MatchType {
+    DimensionOnly,   // Dimension name matched
+    TabOnly,         // Tab name matched
+    Both,            // Both matched
+}
+
+#[derive(Debug, Clone)]
+pub struct SearchResult {
+    pub dimension_index: usize,
+    pub dimension_name: String,
+    pub tab_index: usize,
+    pub tab_name: String,
+    pub score: i64,
+    pub match_type: MatchType,
+}
+
 pub struct App {
     pub config: DimensionConfig,
     pub selected_dimension: usize,
@@ -18,6 +37,11 @@ pub struct App {
     pub input_mode: InputMode,
     pub input_buffer: String,
     pub search_query: String,
+    pub search_results: Vec<SearchResult>,
+    pub search_selected_index: usize,
+    pub last_computed_query: String,
+    pub pre_search_dimension: usize,
+    pub pre_search_tab: Option<usize>,
     pub message: Option<String>,
     pub should_quit: bool,
     pub should_attach: Option<String>, // Session name to attach to after quitting
@@ -47,6 +71,11 @@ impl App {
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
             search_query: String::new(),
+            search_results: Vec::new(),
+            search_selected_index: 0,
+            last_computed_query: String::new(),
+            pre_search_dimension: 0,
+            pre_search_tab: None,
             message: None,
             should_quit: false,
             should_attach: None,
@@ -357,6 +386,14 @@ impl App {
         self.input_mode = InputMode::Searching;
         self.input_buffer.clear();
         self.search_query.clear();
+        self.last_computed_query.clear();
+        self.search_results.clear();
+        self.search_selected_index = 0;
+
+        // Save current selection
+        self.pre_search_dimension = self.selected_dimension;
+        self.pre_search_tab = self.selected_tab;
+
         self.clear_message();
     }
 
@@ -366,16 +403,30 @@ impl App {
         self.input_buffer.clear();
         if was_searching {
             self.search_query.clear();
+            self.search_results.clear();
+            self.last_computed_query.clear();
+
+            // Restore pre-search selection
+            self.selected_dimension = self.pre_search_dimension;
+            self.selected_tab = self.pre_search_tab;
         }
         self.clear_message();
     }
 
     pub fn handle_input_char(&mut self, c: char) {
         self.input_buffer.push(c);
+        // Live search: update search query as user types
+        if self.input_mode == InputMode::Searching {
+            self.search_query = self.input_buffer.clone();
+        }
     }
 
     pub fn handle_input_backspace(&mut self) {
         self.input_buffer.pop();
+        // Live search: update search query as user types
+        if self.input_mode == InputMode::Searching {
+            self.search_query = self.input_buffer.clone();
+        }
     }
 
     pub fn submit_input(&mut self) -> Result<()> {
@@ -402,8 +453,8 @@ impl App {
                 }
             }
             InputMode::Searching => {
-                // Update search query and stay in search mode
-                self.search_query = self.input_buffer.clone();
+                // Live search updates query as user types, so nothing to do here
+                // Enter with results is handled in handle_input_mode -> select_search_result
                 return Ok(());
             }
             InputMode::Normal => {}
@@ -415,5 +466,116 @@ impl App {
 
     pub fn get_current_dimension(&self) -> Option<&Dimension> {
         self.config.dimensions.get(self.selected_dimension)
+    }
+
+    pub fn compute_search_results(&mut self) {
+        // Only recompute if query changed
+        if self.search_query == self.last_computed_query {
+            return;
+        }
+
+        self.last_computed_query = self.search_query.clone();
+        self.search_results.clear();
+        self.search_selected_index = 0;
+
+        if self.search_query.is_empty() {
+            return;
+        }
+
+        let matcher = SkimMatcherV2::default();
+
+        for (dim_idx, dimension) in self.config.dimensions.iter().enumerate() {
+            let dim_score = matcher.fuzzy_match(&dimension.name, &self.search_query);
+
+            // Get tabs from tmux if session exists, otherwise from config
+            let tabs: Vec<(usize, String)> = if Tmux::session_exists(&dimension.name) {
+                Tmux::list_windows(&dimension.name).unwrap_or_default()
+            } else {
+                dimension.tabs.iter()
+                    .enumerate()
+                    .map(|(i, t)| (i, t.name.clone()))
+                    .collect()
+            };
+
+            if tabs.is_empty() && dim_score.is_some() {
+                // Dimension matches but has no tabs - add dimension-only result
+                self.search_results.push(SearchResult {
+                    dimension_index: dim_idx,
+                    dimension_name: dimension.name.clone(),
+                    tab_index: 0,
+                    tab_name: String::from("(no tabs)"),
+                    score: dim_score.unwrap(),
+                    match_type: MatchType::DimensionOnly,
+                });
+            } else {
+                // Check each tab
+                for (tab_idx, tab_name) in tabs.iter() {
+                    let tab_score = matcher.fuzzy_match(tab_name, &self.search_query);
+
+                    // Include if dimension OR tab matches
+                    let (final_score, match_type) = match (dim_score, tab_score) {
+                        (Some(ds), Some(ts)) => {
+                            // Both match - use sum for better ranking
+                            (ds + ts, MatchType::Both)
+                        },
+                        (Some(ds), None) => {
+                            // Only dimension matches - include all its tabs
+                            (ds, MatchType::DimensionOnly)
+                        },
+                        (None, Some(ts)) => {
+                            // Only tab matches
+                            (ts, MatchType::TabOnly)
+                        },
+                        (None, None) => continue, // No match
+                    };
+
+                    self.search_results.push(SearchResult {
+                        dimension_index: dim_idx,
+                        dimension_name: dimension.name.clone(),
+                        tab_index: *tab_idx,
+                        tab_name: tab_name.clone(),
+                        score: final_score,
+                        match_type,
+                    });
+                }
+            }
+        }
+
+        // Sort by score descending (highest match first)
+        self.search_results.sort_by(|a, b| b.score.cmp(&a.score));
+    }
+
+    pub fn next_search_result(&mut self) {
+        if !self.search_results.is_empty() {
+            self.search_selected_index = (self.search_selected_index + 1) % self.search_results.len();
+        }
+    }
+
+    pub fn previous_search_result(&mut self) {
+        if !self.search_results.is_empty() {
+            if self.search_selected_index == 0 {
+                self.search_selected_index = self.search_results.len() - 1;
+            } else {
+                self.search_selected_index -= 1;
+            }
+        }
+    }
+
+    pub fn select_search_result(&mut self) -> Result<()> {
+        if let Some(result) = self.search_results.get(self.search_selected_index) {
+            // Update selection based on search result
+            self.selected_dimension = result.dimension_index;
+            self.selected_tab = Some(result.tab_index);
+
+            // Clear search and return to normal mode
+            self.input_mode = InputMode::Normal;
+            self.search_query.clear();
+            self.search_results.clear();
+            self.last_computed_query.clear();
+
+            // Immediately switch to the dimension
+            self.switch_to_dimension()?;
+        }
+        Ok(())
     }
 }

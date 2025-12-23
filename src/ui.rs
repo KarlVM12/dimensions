@@ -1,4 +1,4 @@
-use crate::app::{App, InputMode};
+use crate::app::{App, InputMode, MatchType};
 use crate::tmux::Tmux;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -8,7 +8,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render(f: &mut Frame, app: &App) {
+pub fn render(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -32,17 +32,27 @@ fn render_title(f: &mut Frame, area: Rect) {
     f.render_widget(title, area);
 }
 
-fn render_main_content(f: &mut Frame, app: &App, area: Rect) {
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage(40),  // Dimensions list
-            Constraint::Percentage(60),  // Tabs list
-        ])
-        .split(area);
+fn render_main_content(f: &mut Frame, app: &mut App, area: Rect) {
+    // Check if we're in active search mode with a query
+    if app.input_mode == InputMode::Searching && !app.search_query.is_empty() {
+        // Compute search results if needed
+        app.compute_search_results();
 
-    render_dimensions_list(f, app, chunks[0]);
-    render_tabs_list(f, app, chunks[1]);
+        // Render single-column search results
+        render_search_results(f, app, area);
+    } else {
+        // Render normal two-column layout
+        let chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(40),  // Dimensions list
+                Constraint::Percentage(60),  // Tabs list
+            ])
+            .split(area);
+
+        render_dimensions_list(f, app, chunks[0]);
+        render_tabs_list(f, app, chunks[1]);
+    }
 }
 
 fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
@@ -222,6 +232,60 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
+fn render_search_results(f: &mut Frame, app: &App, area: Rect) {
+    let items: Vec<ListItem> = app
+        .search_results
+        .iter()
+        .enumerate()
+        .map(|(i, result)| {
+            let is_selected = i == app.search_selected_index;
+            let is_current = app.current_session.as_ref() == Some(&result.dimension_name);
+
+            // Format: "dimension_name: tab_name"
+            let content = if result.tab_name == "(no tabs)" {
+                format!("{} (no tabs)", result.dimension_name)
+            } else {
+                format!("{}: {}", result.dimension_name, result.tab_name)
+            };
+
+            let style = if is_current {
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_selected {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                // Dim slightly based on match type
+                match result.match_type {
+                    MatchType::Both => Style::default().fg(Color::White),
+                    MatchType::DimensionOnly => Style::default().fg(Color::Gray),
+                    MatchType::TabOnly => Style::default().fg(Color::White),
+                }
+            };
+
+            ListItem::new(content).style(style)
+        })
+        .collect();
+
+    let title = if app.search_results.is_empty() {
+        format!("Search Results: '{}' (no matches)", app.search_query)
+    } else {
+        format!("Search Results: '{}' ({} matches)", app.search_query, app.search_results.len())
+    };
+
+    let list = List::new(items)
+        .block(Block::default().title(title).borders(Borders::ALL))
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
+
+    f.render_widget(list, area);
+}
+
 fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     let mut spans = vec![];
 
@@ -288,7 +352,7 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw(" Delete  "),
                 Span::styled("/", Style::default().fg(Color::Yellow)),
                 Span::raw(" Search  "),
-                Span::styled("c", Style::default().fg(Color::Yellow)),
+                Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::raw(" Close  "),
                 Span::styled("q", Style::default().fg(Color::Yellow)),
                 Span::raw(" Quit"),
@@ -302,15 +366,30 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw(" Cancel"),
             ]),
         ],
-        InputMode::Searching => vec![
-            Line::from(vec![
-                Span::raw("Type to filter tabs  "),
-                Span::styled("Enter", Style::default().fg(Color::Yellow)),
-                Span::raw(" Apply filter  "),
-                Span::styled("Esc", Style::default().fg(Color::Yellow)),
-                Span::raw(" Cancel search"),
-            ]),
-        ],
+        InputMode::Searching => {
+            if app.search_query.is_empty() {
+                // Before query is entered
+                vec![
+                    Line::from(vec![
+                        Span::raw("Type to search dimensions and tabs (live)  "),
+                        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+                        Span::raw(" Cancel"),
+                    ]),
+                ]
+            } else {
+                // After query is entered, showing results
+                vec![
+                    Line::from(vec![
+                        Span::styled("↑/↓", Style::default().fg(Color::Yellow)),
+                        Span::raw(" Navigate results  "),
+                        Span::styled("Enter", Style::default().fg(Color::Yellow)),
+                        Span::raw(" Select  "),
+                        Span::styled("Esc", Style::default().fg(Color::Yellow)),
+                        Span::raw(" Cancel"),
+                    ]),
+                ]
+            }
+        }
         InputMode::DeletingDimension => vec![
             Line::from(vec![
                 Span::styled("y", Style::default().fg(Color::Yellow)),

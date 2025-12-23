@@ -130,7 +130,7 @@ fn run_app<B: ratatui::backend::Backend>(
 fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
     match key {
         KeyCode::Char('q') => app.quit(),
-        KeyCode::Char('c') => app.close_popup(),
+        KeyCode::Esc => app.close_popup(),
         KeyCode::Char('j') | KeyCode::Down => app.next_dimension(),
         KeyCode::Char('k') | KeyCode::Up => app.previous_dimension(),
         KeyCode::Char('l') | KeyCode::Right => app.next_tab(),
@@ -153,10 +153,28 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
 
 fn handle_input_mode(app: &mut App, key: KeyCode) -> Result<()> {
     match key {
-        KeyCode::Enter => app.submit_input()?,
+        KeyCode::Enter => {
+            if app.input_mode == InputMode::Searching && !app.search_results.is_empty() {
+                // In search mode with results, Enter selects and switches
+                app.select_search_result()?;
+            } else {
+                // Normal submit for other input modes
+                app.submit_input()?;
+            }
+        }
         KeyCode::Char(c) => app.handle_input_char(c),
         KeyCode::Backspace => app.handle_input_backspace(),
         KeyCode::Esc => app.cancel_input(),
+        KeyCode::Up | KeyCode::Down => {
+            // In search mode, navigate results
+            if app.input_mode == InputMode::Searching {
+                if key == KeyCode::Up {
+                    app.previous_search_result();
+                } else {
+                    app.next_search_result();
+                }
+            }
+        }
         _ => {}
     }
     Ok(())
