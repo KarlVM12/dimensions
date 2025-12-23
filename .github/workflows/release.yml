@@ -101,28 +101,28 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           VER="${TAG#v}"
 
-	          {
-	            echo "## Dimensions ${TAG}"
-	            echo
-	            echo "### Install"
-	            echo
-	            echo "\`\`\`bash"
-	            echo "curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/${TAG}/install.sh | sh -s -- --version ${TAG}"
-	            echo "\`\`\`"
-	            echo
-	            echo "### Updating"
-	            echo
-	            echo "- Recommended: run \`dimensions --update\`"
-	            echo "- If you installed via \`cargo install\` (or have multiple installs on \`PATH\`) and want to update the exact binary your shell runs:"
-	            echo
-	            echo "\`\`\`bash"
-	            echo "curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/${TAG}/install.sh | sh -s -- --version ${TAG} --dir \"\$(dirname \"\$(command -v dimensions)\")\""
-	            echo "\`\`\`"
-	            echo
-	            echo "### Changes"
-	            echo
-	            awk -v ver="$VER" '
-	              $0 ~ "^## \\[" ver "\\]" {flag=1; next}
+          {
+            echo "## Dimensions ${TAG}"
+            echo
+            echo "### Install"
+            echo
+            echo "\`\`\`bash"
+            echo "curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/${TAG}/install.sh | sh -s -- --version ${TAG}"
+            echo "\`\`\`"
+            echo
+            echo "### Updating"
+            echo
+            echo "- Recommended: run \`dimensions --update\`"
+            echo "- If you installed via \`cargo install\` (or have multiple installs on \`PATH\`) and want to update the exact binary your shell runs:"
+            echo
+            echo "\`\`\`bash"
+            echo "curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/${TAG}/install.sh | sh -s -- --version ${TAG} --dir \"\$(dirname \"\$(command -v dimensions)\")\""
+            echo "\`\`\`"
+            echo
+            echo "### Changes"
+            echo
+            awk -v ver="$VER" '
+              $0 ~ "^## \\[" ver "\\]" {flag=1; next}
               flag && $0 ~ "^## \\[" {exit}
               flag {print}
             ' CHANGELOG.md | sed -e '/^[[:space:]]*$/N;/^\n$/D'
