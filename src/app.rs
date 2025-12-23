@@ -146,9 +146,9 @@ impl App {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
             // Get actual window count from tmux if session exists
             let tab_count = if Tmux::session_exists(&dimension.name) {
-                Tmux::get_window_count(&dimension.name).unwrap_or(dimension.tabs.len())
+                Tmux::get_window_count(&dimension.name).unwrap_or(dimension.configured_tabs.len())
             } else {
-                dimension.tabs.len()
+                dimension.configured_tabs.len()
             };
 
             if tab_count > 0 {
@@ -164,9 +164,9 @@ impl App {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
             // Get actual window count from tmux if session exists
             let tab_count = if Tmux::session_exists(&dimension.name) {
-                Tmux::get_window_count(&dimension.name).unwrap_or(dimension.tabs.len())
+                Tmux::get_window_count(&dimension.name).unwrap_or(dimension.configured_tabs.len())
             } else {
-                dimension.tabs.len()
+                dimension.configured_tabs.len()
             };
 
             if tab_count > 0 {
@@ -228,8 +228,8 @@ impl App {
     pub fn switch_to_dimension(&mut self) -> Result<()> {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
             let name = dimension.name.clone();
-            let has_tabs = !dimension.tabs.is_empty();
-            let tabs = dimension.tabs.clone();
+            let has_tabs = !dimension.configured_tabs.is_empty();
+            let tabs = dimension.configured_tabs.clone();
 
             // Ensure tmux session exists
             if !Tmux::session_exists(&name) {
@@ -332,7 +332,11 @@ impl App {
 
                     // Remove from config if it exists there
                     if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
-                        if let Some(config_index) = dimension.tabs.iter().position(|t| t.name == window_name) {
+                        if let Some(config_index) = dimension
+                            .configured_tabs
+                            .iter()
+                            .position(|t| t.name == window_name)
+                        {
                             dimension.remove_tab(config_index);
                         }
                     }
@@ -352,9 +356,9 @@ impl App {
                 let (removed_name, new_tab_count) = {
                     if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
                         if let Some(tab) = dimension.remove_tab(tab_index) {
-                            (Some(tab.name), dimension.tabs.len())
+                            (Some(tab.name), dimension.configured_tabs.len())
                         } else {
-                            (None, dimension.tabs.len())
+                            (None, dimension.configured_tabs.len())
                         }
                     } else {
                         (None, 0)
@@ -504,7 +508,9 @@ impl App {
             let tabs: Vec<(usize, String)> = if Tmux::session_exists(&dimension.name) {
                 Tmux::list_windows(&dimension.name).unwrap_or_default()
             } else {
-                dimension.tabs.iter()
+                dimension
+                    .configured_tabs
+                    .iter()
                     .enumerate()
                     .map(|(i, t)| (i, t.name.clone()))
                     .collect()

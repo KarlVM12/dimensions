@@ -272,7 +272,7 @@ Configuration is stored in an OS-specific location:
 Dimensions uses a **hybrid storage approach**:
 
 1. **Config file** = Blueprint/template for dimensions
-   - Stores dimension names, configured tabs, and commands
+   - Stores dimension names, collapsed state, and **configured tabs** (name + optional command)
    - Saved when you create/delete dimensions or add/remove tabs through the UI
 
 2. **tmux sessions** = Live running state
@@ -311,7 +311,7 @@ Example configuration:
 }
 ```
 
-**Note:** Windows you create directly in tmux are not saved to config; only tabs you add via Dimensions are persisted (including the initial "`dimension-1`" starter tab for brand-new empty dimensions).
+**Note:** Windows you create directly in tmux are not saved to config; only **configured tabs** you add via Dimensions are persisted (including the initial "`dimension-1`" starter tab for brand-new empty dimensions).
 
 ## Features
 

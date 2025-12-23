@@ -20,7 +20,9 @@ impl Tab {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dimension {
     pub name: String,
-    pub tabs: Vec<Tab>,
+    // Tabs persisted in config (used as a template when creating a tmux session).
+    #[serde(rename = "tabs", default)]
+    pub configured_tabs: Vec<Tab>,
     #[serde(default)]
     pub collapsed: bool,
 }
@@ -29,18 +31,18 @@ impl Dimension {
     pub fn new(name: String) -> Self {
         Self {
             name,
-            tabs: vec![],
+            configured_tabs: vec![],
             collapsed: false,
         }
     }
 
     pub fn add_tab(&mut self, tab: Tab) {
-        self.tabs.push(tab);
+        self.configured_tabs.push(tab);
     }
 
     pub fn remove_tab(&mut self, index: usize) -> Option<Tab> {
-        if index < self.tabs.len() {
-            Some(self.tabs.remove(index))
+        if index < self.configured_tabs.len() {
+            Some(self.configured_tabs.remove(index))
         } else {
             None
         }

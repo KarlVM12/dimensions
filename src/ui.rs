@@ -66,9 +66,9 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
 
             // Get actual window count from tmux if session exists
             let tab_count = if Tmux::session_exists(&dim.name) {
-                Tmux::get_window_count(&dim.name).unwrap_or(dim.tabs.len())
+                Tmux::get_window_count(&dim.name).unwrap_or(dim.configured_tabs.len())
             } else {
-                dim.tabs.len()
+                dim.configured_tabs.len()
             };
 
             let current_marker = if is_current { " *" } else { "" };
@@ -143,7 +143,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
 
                     // Check if this window has a configured command
                     let command_text = dimension
-                        .tabs
+                        .configured_tabs
                         .iter()
                         .find(|t| &t.name == window_name)
                         .and_then(|t| t.command.as_ref())
@@ -168,7 +168,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
         } else {
             // Session doesn't exist, show configured tabs
             dimension
-                .tabs
+                .configured_tabs
                 .iter()
                 .enumerate()
                 .filter(|(_, tab)| {
