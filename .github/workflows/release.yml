@@ -122,7 +122,7 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Dimensions ${GITHUB_REF_NAME}"
+          name: "Dimensions ${{ github.ref_name }}"
           body_path: release_notes.md
           files: |
             dist/*
