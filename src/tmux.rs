@@ -56,25 +56,6 @@ impl Tmux {
     }
 
     /// List all tmux sessions
-    pub fn list_sessions() -> Result<Vec<String>> {
-        let output = Command::new("tmux")
-            .args(["list-sessions", "-F", "#{session_name}"])
-            .output()
-            .context("Failed to list tmux sessions")?;
-
-        if !output.status.success() {
-            // No sessions exist yet
-            return Ok(vec![]);
-        }
-
-        let sessions = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .map(String::from)
-            .collect();
-
-        Ok(sessions)
-    }
-
     /// Create a new tmux session
     pub fn create_session(name: &str, detached: bool) -> Result<()> {
         let mut cmd = Command::new("tmux");
@@ -207,25 +188,6 @@ impl Tmux {
         Ok(windows)
     }
 
-    /// Select a specific window in a session by index (0-based)
-    pub fn select_window(session: &str, window_index: usize) -> Result<()> {
-        let output = Command::new("tmux")
-            .args(["select-window", "-t", &format!("{}:{}", session, window_index)])
-            .output()
-            .context("Failed to select tmux window")?;
-
-        if !output.status.success() {
-            anyhow::bail!(
-                "Failed to select window {} in session '{}': {}",
-                window_index,
-                session,
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-
-        Ok(())
-    }
-
     /// Rename a window in a session
     pub fn rename_window(session: &str, window_index: usize, new_name: &str) -> Result<()> {
         let output = Command::new("tmux")
@@ -302,25 +264,6 @@ impl Tmux {
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
-    }
-
-    /// Rename a session
-    pub fn rename_session(old_name: &str, new_name: &str) -> Result<()> {
-        let output = Command::new("tmux")
-            .args(["rename-session", "-t", old_name, new_name])
-            .output()
-            .context("Failed to rename tmux session")?;
-
-        if !output.status.success() {
-            anyhow::bail!(
-                "Failed to rename session '{}' to '{}': {}",
-                old_name,
-                new_name,
-                String::from_utf8_lossy(&output.stderr)
-            );
-        }
-
-        Ok(())
     }
 
     /// Configure status bar to show minimal info (avoids truncation issues)

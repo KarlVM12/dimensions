@@ -261,13 +261,6 @@ impl App {
         Ok(())
     }
 
-    pub fn toggle_collapse_dimension(&mut self) {
-        if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
-            dimension.collapsed = !dimension.collapsed;
-            let _ = self.save_config();
-        }
-    }
-
     pub fn switch_to_dimension(&mut self) -> Result<()> {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
             let name = dimension.name.clone();

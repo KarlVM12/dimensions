@@ -136,7 +136,6 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
         KeyCode::Char('k') | KeyCode::Up => app.previous_dimension(),
         KeyCode::Char('l') | KeyCode::Right => app.next_tab(),
         KeyCode::Char('h') | KeyCode::Left => app.previous_tab(),
-        KeyCode::Char(' ') => app.toggle_collapse_dimension(),
         KeyCode::Char('n') => app.start_create_dimension(),
         KeyCode::Char('t') => app.start_add_tab(),
         KeyCode::Char('d') => {

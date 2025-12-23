@@ -7,6 +7,54 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
+use unicode_width::UnicodeWidthStr;
+
+fn inner_list_width(area: Rect) -> usize {
+    // Account for left/right borders.
+    area.width.saturating_sub(2) as usize
+}
+
+fn truncate_ellipsis(input: &str, max_width: usize) -> String {
+    if max_width == 0 {
+        return String::new();
+    }
+    if input.width() <= max_width {
+        return input.to_string();
+    }
+    if max_width == 1 {
+        return "…".to_string();
+    }
+
+    let mut out = String::new();
+    let mut used = 0usize;
+    let budget = max_width - 1; // leave room for ellipsis
+    for ch in input.chars() {
+        let w = ch.to_string().width();
+        if used + w > budget {
+            break;
+        }
+        out.push(ch);
+        used += w;
+    }
+    out.push('…');
+    out
+}
+
+fn truncate_with_suffix(main: &str, suffix: &str, max_width: usize) -> String {
+    let suffix_width = suffix.width();
+    if max_width == 0 {
+        return String::new();
+    }
+    if main.width() + suffix_width <= max_width {
+        return format!("{}{}", main, suffix);
+    }
+    if suffix_width >= max_width {
+        // Suffix alone doesn't fit; just truncate the combined string.
+        return truncate_ellipsis(&format!("{}{}", main, suffix), max_width);
+    }
+    let main_max = max_width - suffix_width;
+    format!("{}{}", truncate_ellipsis(main, main_max), suffix)
+}
 
 pub fn render(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -26,7 +74,7 @@ pub fn render(f: &mut Frame, app: &mut App) {
 }
 
 fn render_title(f: &mut Frame, area: Rect) {
-    let title = Paragraph::new("🌌 Dimensions - Visual Tmux Session Manager")
+    let title = Paragraph::new("🌌 Dimensions - Terminal Tab Manager")
         .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, area);
@@ -56,13 +104,13 @@ fn render_main_content(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
+    let max_width = inner_list_width(area);
     let dimensions: Vec<ListItem> = app
         .config
         .dimensions
         .iter()
         .map(|dim| {
             let is_current = app.current_session.as_ref() == Some(&dim.name);
-            let collapse_icon = if dim.collapsed { "▶" } else { "▼" };
 
             // Get actual window count from tmux if session exists
             let tab_count = if Tmux::session_exists(&dim.name) {
@@ -73,13 +121,8 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
 
             let current_marker = if is_current { " *" } else { "" };
 
-            let content = format!(
-                "{} {} ({} tabs){}",
-                collapse_icon,
-                dim.name,
-                tab_count,
-                current_marker
-            );
+            let suffix = format!(" ({} tabs){}", tab_count, current_marker);
+            let content = truncate_with_suffix(&dim.name, &suffix, max_width);
 
             let style = if is_current {
                 Style::default()
@@ -116,14 +159,7 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
     if let Some(dimension) = app.get_current_dimension() {
-        if dimension.collapsed {
-            let text = Paragraph::new("Dimension is collapsed")
-                .style(Style::default().fg(Color::DarkGray))
-                .block(Block::default().title("Tabs").borders(Borders::ALL));
-            f.render_widget(text, area);
-            return;
-        }
-
+        let max_width = inner_list_width(area);
         // Get actual windows from tmux if session exists
         let (tabs, selected_pos): (Vec<ListItem>, Option<usize>) = if Tmux::session_exists(&dimension.name) {
             let windows = Tmux::list_windows(&dimension.name).unwrap_or_default();
@@ -157,7 +193,8 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
 
                     let current_marker = if is_current { " *" } else { "" };
 
-                    let content = format!("{}. {}{}{}", window_idx, window_name, command_text, current_marker);
+                    let main = format!("{}. {}{}", window_idx, window_name, command_text);
+                    let content = truncate_with_suffix(&main, current_marker, max_width);
 
                     let style = if is_current {
                         Style::default()
@@ -193,7 +230,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                         .map(|c| format!(" ({})", c))
                         .unwrap_or_default();
 
-                    let content = format!("{}. {}{}", i, tab.name, command_text);
+                    let content = truncate_ellipsis(&format!("{}. {}{}", i, tab.name, command_text), max_width);
 
                     ListItem::new(content)
                 })
@@ -226,6 +263,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_search_results(f: &mut Frame, app: &App, area: Rect) {
+    let max_width = inner_list_width(area);
     let items: Vec<ListItem> = app
         .search_results
         .iter()
@@ -256,18 +294,43 @@ fn render_search_results(f: &mut Frame, app: &App, area: Rect) {
             let mut spans = Vec::new();
             let separator_style = base_style;
 
-            // Dimension name (green only for the current session).
-            spans.push(Span::styled(result.dimension_name.clone(), dim_style));
+            let marker = if is_current_tab { " *" } else { "" };
+            let marker_width = marker.width();
+            let available = max_width.saturating_sub(marker_width);
 
-            if result.tab_name == "(no tabs)" {
-                spans.push(Span::styled(" (no tabs)", tab_style));
+            let dim = result.dimension_name.as_str();
+            let (sep, tab) = if result.tab_name == "(no tabs)" {
+                (" ", "(no tabs)")
             } else {
-                spans.push(Span::styled(": ", separator_style));
-                spans.push(Span::styled(result.tab_name.clone(), tab_style));
+                (": ", result.tab_name.as_str())
+            };
 
-                if is_current_tab {
-                    spans.push(Span::styled(" *", tab_style));
+            let sep_width = sep.width();
+            let mut dim_out = dim.to_string();
+            let mut tab_out = tab.to_string();
+
+            if dim.width() + sep_width + tab.width() > available {
+                // Truncate tab first, then dimension if needed.
+                let tab_max = available.saturating_sub(dim.width() + sep_width);
+                if tab_max > 0 {
+                    tab_out = truncate_ellipsis(tab, tab_max);
+                } else {
+                    dim_out = truncate_ellipsis(dim, available.saturating_sub(sep_width));
+                    let tab_max2 = available
+                        .saturating_sub(dim_out.width() + sep_width);
+                    if tab_max2 > 0 {
+                        tab_out = truncate_ellipsis(tab, tab_max2);
+                    } else {
+                        tab_out.clear();
+                    }
                 }
+            }
+
+            spans.push(Span::styled(dim_out, dim_style));
+            spans.push(Span::styled(sep, separator_style));
+            spans.push(Span::styled(tab_out, tab_style));
+            if !marker.is_empty() {
+                spans.push(Span::styled(marker, tab_style));
             }
 
             ListItem::new(Line::from(spans))
@@ -346,9 +409,7 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::styled("↑/↓", Style::default().fg(Color::Yellow)),
                 Span::raw(" Navigate dimensions  "),
                 Span::styled("←/→", Style::default().fg(Color::Yellow)),
-                Span::raw(" Navigate tabs  "),
-                Span::styled("Space", Style::default().fg(Color::Yellow)),
-                Span::raw(" Collapse/expand"),
+                Span::raw(" Navigate tabs"),
             ]),
             Line::from(vec![
                 Span::styled("Enter", Style::default().fg(Color::Yellow)),

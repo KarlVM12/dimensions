@@ -1,6 +1,6 @@
 # Dimensions 🌌
 
-**Visual tmux session manager with collapsible tab groups** - Organize your terminal workflows with an interactive TUI.
+**Terminal Tab Manager** - Organize your terminal workflows with an interactive TUI.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
@@ -10,7 +10,6 @@
 Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and windows. It provides a visual interface to organize your terminal workflows into collapsible groups called "dimensions". Key features:
 
 - **🔍 Fuzzy search** - Live search across all dimensions and tabs with instant results
-- **✨ Visually collapse/expand tab groups** - Hide tabs you're not using
 - **🔄 Switch between dimensions** - All processes stay alive in the background
 - **💾 Persistent configuration** - Dimension names, tabs, and commands saved to disk
 - **⚡ Popup mode** - Quick access with Ctrl+G from anywhere (even inside vim/nvim)
@@ -22,7 +21,7 @@ Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and win
 
 ```
 ┌────────────────────────────────────────────────────┐
-│ 🌌 Dimensions - Visual Tmux Session Manager        │
+│ 🌌 Dimensions - Terminal Tab Manager               │
 ├────────────────────────────────────────────────────┤
 │ Dimensions          │ Tabs                         │
 │ ▼ dev (4 tabs) *    │ 1. Editor                    │
@@ -45,7 +44,6 @@ Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and win
 
 **Solution:** Dimensions lets you:
 - Group tabs into named dimensions
-- Collapse dimensions to hide them (processes keep running via tmux)
 - Switch between dimensions instantly
 - Never lose your running processes
 
@@ -135,7 +133,6 @@ dimensions
 - `↓/j` - Next dimension
 - `→/l` - Navigate right to select a tab
 - `←/h` - Navigate left (back to dimension)
-- `Space` - Collapse/expand current dimension
 - `Enter` - Switch to the selected dimension/tab
   - If the dimension's tmux session doesn't exist yet, Dimensions creates it and bootstraps any configured tabs
   - If the dimension has no configured tabs, Dimensions creates a starter tmux window named "`dimension-1`" (not saved to config)
@@ -195,12 +192,6 @@ If you want a tab that isn't saved to config, create it directly in tmux (it wil
 ```bash
 tmux new-window -n scratch
 ```
-
-#### Collapse a Dimension
-
-1. Select a dimension with `↑/↓`
-2. Press `Space` to collapse/expand it
-3. Collapsed dimensions hide their tabs in the UI
 
 #### Use Fuzzy Search to Find Any Tab
 
@@ -272,7 +263,7 @@ Configuration is stored in an OS-specific location:
 Dimensions uses a **hybrid storage approach**:
 
 1. **Config file** = Blueprint/template for dimensions
-   - Stores dimension names, collapsed state, and **configured tabs** (name + optional command)
+   - Stores dimension names and **configured tabs** (name + optional command)
    - Saved when you create/delete dimensions or add/remove tabs through the UI
 
 2. **tmux sessions** = Live running state
@@ -293,7 +284,6 @@ Example configuration:
   "dimensions": [
     {
       "name": "dev",
-      "collapsed": false,
       "tabs": [
         {"name": "Claude", "command": "claude"},
         {"name": "Server", "command": "npm run dev"}
@@ -301,7 +291,6 @@ Example configuration:
     },
     {
       "name": "personal",
-      "collapsed": true,
       "tabs": [
         {"name": "zsh", "command": null},
         {"name": "Codex", "command": "codex"}
@@ -317,7 +306,6 @@ Example configuration:
 
 - [x] Create/delete dimensions
 - [x] Add/remove tabs
-- [x] Visual collapse/expand
 - [x] Switch between dimensions
 - [x] Persist configuration
 - [x] tmux integration

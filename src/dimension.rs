@@ -23,8 +23,6 @@ pub struct Dimension {
     // Tabs persisted in config (used as a template when creating a tmux session).
     #[serde(rename = "tabs", default)]
     pub configured_tabs: Vec<Tab>,
-    #[serde(default)]
-    pub collapsed: bool,
 }
 
 impl Dimension {
@@ -32,7 +30,6 @@ impl Dimension {
         Self {
             name,
             configured_tabs: vec![],
-            collapsed: false,
         }
     }
 
@@ -114,8 +111,4 @@ impl DimensionConfig {
         self.dimensions.iter().find(|d| d.name == name)
     }
 
-    /// Get a mutable dimension by name
-    pub fn get_dimension_mut(&mut self, name: &str) -> Option<&mut Dimension> {
-        self.dimensions.iter_mut().find(|d| d.name == name)
-    }
 }
