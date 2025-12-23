@@ -25,8 +25,9 @@ fn main() -> Result<()> {
     // Setup terminal
     if let Err(e) = enable_raw_mode() {
         eprintln!("Error: Cannot start Dimensions from within another TUI application.");
-        eprintln!("       If you're in nvim/vim, exit first or use a tmux keybinding.");
-        eprintln!("       Try: Press Ctrl+B then run 'dimensions' in a new window.");
+        eprintln!("       Exit the current TUI first, or use a tmux popup keybinding.");
+        eprintln!("       Tip: bind any key (commonly Ctrl+G) to a popup in ~/.tmux.conf, e.g.:");
+        eprintln!("         bind -n C-g display-popup -E -w 80% -h 80% \"dimensions\"");
         eprintln!("\nTechnical error: {:?}", e);
         std::process::exit(1);
     }
