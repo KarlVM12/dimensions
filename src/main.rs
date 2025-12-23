@@ -2,6 +2,7 @@ mod app;
 mod dimension;
 mod tmux;
 mod ui;
+mod update;
 
 use anyhow::Result;
 use app::{App, InputMode};
@@ -15,6 +16,78 @@ use std::io;
 use tmux::Tmux;
 
 fn main() -> Result<()> {
+    // Lightweight CLI flags (before terminal init).
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--version" || a == "-v") {
+        println!("dimensions v{}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+    if args.iter().any(|a| a == "--update" || a == "-u") {
+        let current = env!("CARGO_PKG_VERSION");
+        let Some(tag) = update::latest_tag() else {
+            eprintln!("Could not check for updates right now.");
+            eprintln!("Current: dimensions v{current}");
+            eprintln!("Releases: https://github.com/KarlVM12/Dimensions/releases");
+            return Ok(());
+        };
+
+        match update::is_newer_than_current(&tag, current) {
+            Some(false) => {
+                println!("Already on the latest version (v{current}).");
+                return Ok(());
+            }
+            None => {
+                eprintln!("Could not compare versions (current v{current}, latest {tag}).");
+                println!("{}", update::update_instructions(&tag));
+                return Ok(());
+            }
+            Some(true) => {}
+        }
+
+        eprintln!("Update available: {tag} (current v{current})");
+        eprint!("Update now? [y/N] ");
+        use std::io::Write;
+        std::io::stderr().flush().ok();
+
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).ok();
+        let answer = input.trim().to_lowercase();
+        if answer != "y" && answer != "yes" {
+            eprintln!("Cancelled.");
+            println!("{}", update::update_instructions(&tag));
+            return Ok(());
+        }
+
+        if std::process::Command::new("curl").arg("--version").output().is_err() {
+            eprintln!("`curl` is required for `dimensions --update`.");
+            println!("{}", update::update_instructions(&tag));
+            return Ok(());
+        }
+
+        // Run the installer pinned to the latest tag.
+        let cmd = format!(
+            "curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/{tag}/install.sh | sh -s -- --version {tag}",
+            tag = tag
+        );
+        let status = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(cmd)
+            .status();
+
+        match status {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                eprintln!("Update command failed (exit {}).", s);
+                println!("{}", update::update_instructions(&tag));
+            }
+            Err(e) => {
+                eprintln!("Failed to run update command: {e}");
+                println!("{}", update::update_instructions(&tag));
+            }
+        }
+        return Ok(());
+    }
+
     // Check if tmux is installed
     if !Tmux::is_installed() {
         eprintln!("Error: tmux is not installed. Please install tmux first.");
@@ -101,6 +174,7 @@ fn run_app<B: ratatui::backend::Backend>(
     app: &mut App,
 ) -> Result<()> {
     loop {
+        app.poll_update();
         terminal.draw(|f| ui::render(f, app))?;
 
         if app.should_quit {

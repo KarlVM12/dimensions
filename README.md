@@ -54,7 +54,16 @@ Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and win
 - **Rust**: Install from [rustup.rs](https://rustup.rs)
 - **tmux**: `brew install tmux` (macOS) or `apt install tmux` (Linux)
 
-### Install from GitHub Releases
+### Option 1: Install from GitHub Releases
+
+Use the installer script (recommended to pin a version):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/v0.2.7/install.sh | sh -s -- --version v0.2.7
+```
+Then add `~/.local/bin` to your `PATH` if needed. <br>
+
+Or from release version, it includes prebuilt binaries for macOS/Linux and checksum files (`.sha257` per asset and a combined `SHA256SUMS`)
 
 1. Download the right binary for your OS/arch from the latest GitHub Release
 2. Install it somewhere on your `PATH`:
@@ -65,15 +74,7 @@ mkdir -p ~/.local/bin
 mv dimensions ~/.local/bin/dimensions
 ```
 
-Or use the installer script (recommended to pin a version):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/v0.2.6/install.sh | sh -s -- --version v0.2.6
-```
-
-Then add `~/.local/bin` to your `PATH` if needed.
-
-### Build from Source
+### Option 2: Build from Source
 
 ```bash
 git clone https://github.com/KarlVM12/Dimensions.git
@@ -84,7 +85,7 @@ cargo build --release
 ./target/release/dimensions
 ```
 
-### Install Globally
+#### Install Globally after Building from Source
 
 ```bash
 # Install via cargo (recommended)
@@ -276,6 +277,15 @@ When you're in a tmux session and want to switch dimensions:
 Configuration is stored in an OS-specific location:
 - **macOS**: `~/Library/Application\ Support/dimensions/config.json`
 - **Linux**: `~/.config/dimensions/config.json`
+
+### Update Checks
+
+By default, Dimensions may check GitHub Releases about once per day to show a “New version available” message in the status bar.
+Disable by setting `DIMENSIONS_NO_UPDATE_CHECK=1`.
+
+You can also run:
+- `dimensions --version` to print the current version
+- `dimensions --update` to check for updates and (optionally) install the latest release
 
 #### How Config and tmux Work Together
 

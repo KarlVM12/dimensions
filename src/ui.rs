@@ -368,6 +368,11 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
                     msg.clone(),
                     Style::default().fg(Color::Green),
                 ));
+            } else if let Some(msg) = &app.update_message {
+                spans.push(Span::styled(
+                    msg.clone(),
+                    Style::default().fg(Color::Yellow),
+                ));
             }
         }
         InputMode::CreatingDimension | InputMode::AddingTab => {

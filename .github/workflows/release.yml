@@ -47,18 +47,82 @@ jobs:
           set -euo pipefail
           BIN="dimensions"
           ASSET="${BIN}-${{ matrix.target }}"
-          cp "target/${{ matrix.target }}/release/${BIN}" "${ASSET}"
-          chmod +x "${ASSET}"
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${BIN}" "dist/${ASSET}"
+          chmod +x "dist/${ASSET}"
 
           if command -v shasum >/dev/null 2>&1; then
-            shasum -a 256 "${ASSET}" > "${ASSET}.sha256"
+            shasum -a 256 "dist/${ASSET}" > "dist/${ASSET}.sha256"
           else
-            sha256sum "${ASSET}" > "${ASSET}.sha256"
+            sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
           fi
 
-      - name: Upload to GitHub Release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: release
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: dist-*
+          merge-multiple: true
+
+      - name: Create combined SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          rm -f SHA256SUMS
+          for f in dimensions-*; do
+            if [[ -f "$f" && "$f" != *.sha256 ]]; then
+              sha="$(cut -d' ' -f1 "${f}.sha256" 2>/dev/null || true)"
+              if [[ -z "$sha" ]]; then
+                sha="$(shasum -a 256 "$f" | awk '{print $1}' 2>/dev/null || sha256sum "$f" | awk '{print $1}')"
+              fi
+              printf "%s  %s\n" "$sha" "$f" >> SHA256SUMS
+            fi
+          done
+
+      - name: Generate release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+
+          {
+            echo "## Dimensions ${TAG}"
+            echo
+            echo "### Install"
+            echo
+            echo "\`\`\`bash"
+            echo "curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/${TAG}/install.sh | sh -s -- --version ${TAG}"
+            echo "\`\`\`"
+            echo
+            echo "### Changes"
+            echo
+            awk -v ver="$VER" '
+              $0 ~ "^## \\[" ver "\\]" {flag=1; next}
+              flag && $0 ~ "^## \\[" {exit}
+              flag {print}
+            ' CHANGELOG.md | sed -e '/^[[:space:]]*$/N;/^\n$/D'
+          } > release_notes.md
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: "Dimensions ${GITHUB_REF_NAME}"
+          body_path: release_notes.md
           files: |
-            dimensions-${{ matrix.target }}
-            dimensions-${{ matrix.target }}.sha256
+            dist/*

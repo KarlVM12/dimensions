@@ -129,8 +129,12 @@ fi
 
 mkdir -p "$INSTALL_DIR"
 install_path="${INSTALL_DIR}/${BIN_NAME}"
-cp "${TMPDIR}/${ASSET}" "$install_path"
-chmod +x "$install_path"
+
+# Atomic-ish replacement: install via temp file then move into place.
+tmp_install="${install_path}.tmp.$$"
+cp "${TMPDIR}/${ASSET}" "$tmp_install"
+chmod +x "$tmp_install"
+mv "$tmp_install" "$install_path"
 
 echo "Installed: $install_path"
 echo ""

@@ -1,8 +1,12 @@
 use crate::dimension::{Dimension, DimensionConfig, Tab};
 use crate::tmux::Tmux;
+use crate::update;
 use anyhow::Result;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
+use std::sync::mpsc;
+use std::sync::mpsc::TryRecvError;
+use std::thread;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InputMode {
@@ -50,12 +54,14 @@ pub struct App {
     pub pre_search_dimension: usize,
     pub pre_search_tab: Option<usize>,
     pub message: Option<String>,
+    pub update_message: Option<String>,
     pub should_quit: bool,
     pub should_attach: Option<String>, // Session name to attach to after quitting
     pub should_select_window: Option<usize>, // Window index to select after attaching
     pub should_detach: bool, // Whether to detach from tmux on quit
     pub current_session: Option<String>, // Current tmux session when app was opened
     pub current_window: Option<usize>, // Current tmux window index when app was opened
+    update_rx: Option<mpsc::Receiver<Option<String>>>,
 }
 
 impl App {
@@ -77,6 +83,16 @@ impl App {
             .and_then(|session| config.dimensions.iter().position(|d| d.name == *session))
             .unwrap_or(0);
 
+        // Check for updates in the background (best-effort).
+        let (update_tx, update_rx) = mpsc::channel();
+        thread::spawn(move || {
+            let config_dir = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("dimensions");
+            let msg = update::check_for_update_message(config_dir, env!("CARGO_PKG_VERSION"));
+            let _ = update_tx.send(msg);
+        });
+
         Ok(Self {
             config,
             selected_dimension,
@@ -90,12 +106,14 @@ impl App {
             pre_search_dimension: 0,
             pre_search_tab: None,
             message: None,
+            update_message: None,
             should_quit: false,
             should_attach: None,
             should_select_window: None,
             should_detach: false,
             current_session,
             current_window,
+            update_rx: Some(update_rx),
         })
     }
 
@@ -125,6 +143,22 @@ impl App {
 
     pub fn clear_message(&mut self) {
         self.message = None;
+    }
+
+    pub fn poll_update(&mut self) {
+        let Some(rx) = self.update_rx.as_ref() else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(msg) => {
+                self.update_message = msg;
+                self.update_rx = None;
+            }
+            Err(TryRecvError::Empty) => {}
+            Err(TryRecvError::Disconnected) => {
+                self.update_rx = None;
+            }
+        }
     }
 
     // Navigation

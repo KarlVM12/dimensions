@@ -1,6 +1,6 @@
 [package]
 name = "dimensions"
-version = "0.2.6"
+version = "0.2.7"
 description = "Terminal Tab Manager"
 edition = "2024"
 
@@ -13,3 +13,5 @@ anyhow = "1.0"
 dirs = "5.0"
 fuzzy-matcher = "0.3"
 unicode-width = "0.2"
+semver = "1.0"
+ureq = { version = "2.12", default-features = true, features = ["json"] }
