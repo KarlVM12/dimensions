@@ -108,18 +108,24 @@ download "$SUM_URL" "${TMPDIR}/${ASSET}.sha256"
 verify_sha256() {
   file="$1"
   sumfile="$2"
+  expected="$(awk '{print $1}' "$sumfile" | tr -d '\r')"
+  if [ -z "$expected" ]; then
+    echo "Checksum file is invalid: $sumfile" >&2
+    return 1
+  fi
+
   if command -v shasum >/dev/null 2>&1; then
-    (cd "$(dirname "$file")" && shasum -a 256 -c "$(basename "$sumfile")") >/dev/null
+    actual="$(shasum -a 256 "$file" | awk '{print $1}')"
   elif command -v sha256sum >/dev/null 2>&1; then
-    (cd "$(dirname "$file")" && sha256sum -c "$(basename "$sumfile")") >/dev/null
+    actual="$(sha256sum "$file" | awk '{print $1}')"
   elif command -v openssl >/dev/null 2>&1; then
-    expected="$(awk '{print $1}' "$sumfile")"
     actual="$(openssl dgst -sha256 "$file" | awk '{print $2}')"
-    [ "$expected" = "$actual" ]
   else
     echo "Warning: no sha256 tool found; skipping verification." >&2
     return 0
   fi
+
+  [ "$expected" = "$actual" ]
 }
 
 if ! verify_sha256 "${TMPDIR}/${ASSET}" "${TMPDIR}/${ASSET}.sha256"; then

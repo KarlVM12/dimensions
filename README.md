@@ -59,7 +59,7 @@ Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and win
 Use the installer script (recommended to pin a version):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/v0.2.7/install.sh | sh -s -- --version v0.2.7
+curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/v0.2.8/install.sh | sh -s -- --version v0.2.8
 ```
 Then add `~/.local/bin` to your `PATH` if needed. <br>
 

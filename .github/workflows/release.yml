@@ -52,9 +52,9 @@ jobs:
           chmod +x "dist/${ASSET}"
 
           if command -v shasum >/dev/null 2>&1; then
-            shasum -a 256 "dist/${ASSET}" > "dist/${ASSET}.sha256"
+            (cd dist && shasum -a 256 "${ASSET}" > "${ASSET}.sha256")
           else
-            sha256sum "dist/${ASSET}" > "dist/${ASSET}.sha256"
+            (cd dist && sha256sum "${ASSET}" > "${ASSET}.sha256")
           fi
 
       - name: Upload artifact
