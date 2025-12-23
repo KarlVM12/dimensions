@@ -54,6 +54,25 @@ Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and win
 - **Rust**: Install from [rustup.rs](https://rustup.rs)
 - **tmux**: `brew install tmux` (macOS) or `apt install tmux` (Linux)
 
+### Install from GitHub Releases
+
+1. Download the right binary for your OS/arch from the latest GitHub Release
+2. Install it somewhere on your `PATH`:
+
+```bash
+chmod +x dimensions
+mkdir -p ~/.local/bin
+mv dimensions ~/.local/bin/dimensions
+```
+
+Or use the installer script (recommended to pin a version):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/v0.2.6/install.sh | sh -s -- --version v0.2.6
+```
+
+Then add `~/.local/bin` to your `PATH` if needed.
+
 ### Build from Source
 
 ```bash
