@@ -24,7 +24,10 @@ pub enum MatchType {
 pub struct SearchResult {
     pub dimension_index: usize,
     pub dimension_name: String,
+    // Index into the dimension's tab list / `list_windows()` result list.
     pub tab_index: usize,
+    // Actual tmux window index (e.g. 0, 1, 2) when known.
+    pub tmux_window_index: usize,
     pub tab_name: String,
     pub score: i64,
     pub match_type: MatchType,
@@ -64,9 +67,15 @@ impl App {
             (None, None)
         };
 
+        // Start selection on the current tmux session's dimension (useful for popup mode).
+        let selected_dimension = current_session
+            .as_ref()
+            .and_then(|session| config.dimensions.iter().position(|d| d.name == *session))
+            .unwrap_or(0);
+
         Ok(Self {
             config,
-            selected_dimension: 0,
+            selected_dimension,
             selected_tab: None, // Start with dimension selected, not a tab
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
@@ -507,13 +516,14 @@ impl App {
                     dimension_index: dim_idx,
                     dimension_name: dimension.name.clone(),
                     tab_index: 0,
+                    tmux_window_index: 0,
                     tab_name: String::from("(no tabs)"),
                     score: dim_score.unwrap(),
                     match_type: MatchType::DimensionOnly,
                 });
             } else {
                 // Check each tab
-                for (tab_idx, tab_name) in tabs.iter() {
+                for (list_idx, (window_idx, tab_name)) in tabs.iter().enumerate() {
                     let tab_score = matcher.fuzzy_match(tab_name, &self.search_query);
 
                     // Include if dimension OR tab matches
@@ -536,7 +546,8 @@ impl App {
                     self.search_results.push(SearchResult {
                         dimension_index: dim_idx,
                         dimension_name: dimension.name.clone(),
-                        tab_index: *tab_idx,
+                        tab_index: list_idx,
+                        tmux_window_index: *window_idx,
                         tab_name: tab_name.clone(),
                         score: final_score,
                         match_type,

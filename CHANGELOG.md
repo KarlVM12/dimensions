@@ -5,6 +5,18 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-12-23
+
+### Fixed
+- **Creating tabs no longer switches your tmux client in the background**
+- Fixed tmux window creation target to avoid `create_window failed: index 0 in use` in some setups
+
+### Changed
+- Selection now uses a highlight background (current session/tab stays green with `*`)
+- Opening Dimensions inside tmux starts the cursor on your current dimension
+- Search results only highlight the current tab in green (with `*`), not every tab in the current dimension
+- Updated README to match current behavior
+
 ## [0.2.0] - 2025-12-23
 
 ### Added
@@ -81,5 +93,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `q` - Quit and detach from tmux
 
 [0.2.0]: https://github.com/KarlVM12/Dimensions/compare/v0.1.1...v0.2.0
+[0.2.1]: https://github.com/KarlVM12/Dimensions/compare/v0.2.0...v0.2.1
 [0.1.1]: https://github.com/KarlVM12/Dimensions/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/KarlVM12/Dimensions/releases/tag/v0.1.0

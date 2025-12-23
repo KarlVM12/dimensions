@@ -111,6 +111,7 @@ Now press `Ctrl+G` from anywhere (even inside nvim, Claude, or other programs) t
 - Navigate and select a dimension/tab
 - Press Enter to switch (popup closes and switches to selected tab)
 - Press Esc to close popup without switching
+- If you launched from inside tmux, the cursor starts on your current dimension
 
 **Alternative keybindings:**
 ```bash
@@ -135,9 +136,9 @@ dimensions
 - `→/l` - Navigate right to select a tab
 - `←/h` - Navigate left (back to dimension)
 - `Space` - Collapse/expand current dimension
-- `Enter` - **Smart switching:**
-  - If on dimension (no tab selected): Create ad-hoc tab like "dev-1"
-  - If on a specific tab: Switch to that tab
+- `Enter` - Switch to the selected dimension/tab
+  - If the dimension's tmux session doesn't exist yet, Dimensions creates it and bootstraps any configured tabs
+  - If the dimension has no configured tabs, Dimensions creates a starter tab named "`dimension-1`" and saves it
 - `n` - Create new dimension
 - `t` - Add new tab to current dimension
 - `d` - **Context-sensitive delete:**
@@ -187,15 +188,13 @@ dimensions
 3. Use `→/←` to select a specific tab
 4. Press `Enter` to jump to that tab (TUI exits and you see the terminal)
 
-#### Create Ad-Hoc Tabs
+#### Create a Quick Temporary Tab
 
-Sometimes you need a quick terminal without configuring it:
+If you want a tab that isn't saved to config, create it directly in tmux (it will still show up in Dimensions while the session exists):
 
-1. Use `↑/↓` to select a dimension
-2. **Don't** press `→` to select a tab - stay on the dimension
-3. Press `Enter` - Creates a new ad-hoc tab named "dimension-N"
-4. These tabs don't appear in your configured tabs list
-5. Perfect for quick commands or temporary work
+```bash
+tmux new-window -n scratch
+```
 
 #### Collapse a Dimension
 
@@ -253,8 +252,8 @@ When you're in a tmux session and want to switch dimensions:
        │  └─ Window: Server
        │
        └─ Session: personal
-          ├─ Window: Email
-          └─ Window: Music
+          ├─ Window: zsh
+          └─ Window: Codex
 ```
 
 - Each **dimension** = one tmux session
@@ -278,7 +277,7 @@ Dimensions uses a **hybrid storage approach**:
 
 2. **tmux sessions** = Live running state
    - When a tmux session exists, Dimensions shows the actual windows from tmux
-   - Includes both configured tabs AND ad-hoc tabs you created
+   - Includes both configured tabs AND extra windows you created directly in tmux
 
 3. **Bootstrap from config**
    - When switching to a dimension without a tmux session, Dimensions creates it
@@ -296,7 +295,7 @@ Example configuration:
       "name": "dev",
       "collapsed": false,
       "tabs": [
-        {"name": "Claude", "command": null},
+        {"name": "Claude", "command": "claude"},
         {"name": "Server", "command": "npm run dev"}
       ]
     },
@@ -304,15 +303,15 @@ Example configuration:
       "name": "personal",
       "collapsed": true,
       "tabs": [
-        {"name": "Email", "command": null},
-        {"name": "Music", "command": "spotify"}
+        {"name": "zsh", "command": null},
+        {"name": "Codex", "command": "codex"}
       ]
     }
   ]
 }
 ```
 
-**Note:** Ad-hoc tabs (created by pressing Enter on a dimension) exist in tmux but aren't saved to config.
+**Note:** Windows you create directly in tmux are not saved to config; only tabs you add via Dimensions are persisted (including the initial "`dimension-1`" starter tab for brand-new empty dimensions).
 
 ## Features
 

@@ -4,7 +4,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
 
@@ -60,9 +60,7 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
         .config
         .dimensions
         .iter()
-        .enumerate()
-        .map(|(i, dim)| {
-            let is_selected = i == app.selected_dimension;
+        .map(|dim| {
             let is_current = app.current_session.as_ref() == Some(&dim.name);
             let collapse_icon = if dim.collapsed { "▶" } else { "▼" };
 
@@ -87,10 +85,6 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD)
-            } else if is_selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -113,7 +107,11 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         );
 
-    f.render_widget(list, area);
+    let mut state = ListState::default();
+    if !app.config.dimensions.is_empty() {
+        state.select(Some(app.selected_dimension));
+    }
+    f.render_stateful_widget(list, area, &mut state);
 }
 
 fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
@@ -131,8 +129,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
             let windows = Tmux::list_windows(&dimension.name).unwrap_or_default();
             windows
                 .iter()
-                .enumerate()
-                .filter(|(_, (_, window_name))| {
+                .filter(|(_, window_name)| {
                     // Filter based on search query
                     if app.search_query.is_empty() {
                         true
@@ -140,8 +137,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                         window_name.to_lowercase().contains(&app.search_query.to_lowercase())
                     }
                 })
-                .map(|(list_idx, (window_idx, window_name))| {
-                    let is_selected = app.selected_tab == Some(list_idx);
+                .map(|(window_idx, window_name)| {
                     let is_current = app.current_session.as_ref() == Some(&dimension.name)
                         && app.current_window == Some(*window_idx);
 
@@ -161,10 +157,6 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                     let style = if is_current {
                         Style::default()
                             .fg(Color::Green)
-                            .add_modifier(Modifier::BOLD)
-                    } else if is_selected {
-                        Style::default()
-                            .fg(Color::Yellow)
                             .add_modifier(Modifier::BOLD)
                     } else {
                         Style::default()
@@ -188,7 +180,6 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                     }
                 })
                 .map(|(i, tab)| {
-                    let is_selected = app.selected_tab == Some(i);
                     let command_text = tab
                         .command
                         .as_ref()
@@ -197,33 +188,32 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
 
                     let content = format!("{}. {}{}", i, tab.name, command_text);
 
-                    let style = if is_selected {
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD)
-                    } else {
-                        Style::default()
-                    };
-
-                    ListItem::new(content).style(style)
+                    ListItem::new(content)
                 })
                 .collect()
         };
+        let tabs_len = tabs.len();
 
         let title = match app.input_mode {
             InputMode::AddingTab => "Tabs (Format: name or name:command)",
             _ => "Tabs",
         };
 
-        let list = List::new(tabs)
-            .block(Block::default().title(title).borders(Borders::ALL))
-            .highlight_style(
-                Style::default()
-                    .bg(Color::DarkGray)
-                    .add_modifier(Modifier::BOLD),
-            );
+    let list = List::new(tabs)
+        .block(Block::default().title(title).borders(Borders::ALL))
+        .highlight_style(
+            Style::default()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
 
-        f.render_widget(list, area);
+        let mut state = ListState::default();
+        if let Some(selected_tab) = app.selected_tab {
+            if selected_tab < tabs_len {
+                state.select(Some(selected_tab));
+            }
+        }
+        f.render_stateful_widget(list, area, &mut state);
     } else {
         let text = Paragraph::new("No dimension selected")
             .style(Style::default().fg(Color::DarkGray))
@@ -236,36 +226,48 @@ fn render_search_results(f: &mut Frame, app: &App, area: Rect) {
     let items: Vec<ListItem> = app
         .search_results
         .iter()
-        .enumerate()
-        .map(|(i, result)| {
-            let is_selected = i == app.search_selected_index;
-            let is_current = app.current_session.as_ref() == Some(&result.dimension_name);
+        .map(|result| {
+            let is_current_session = app.current_session.as_ref() == Some(&result.dimension_name);
+            let is_current_tab = is_current_session
+                && app.current_window == Some(result.tmux_window_index)
+                && result.tab_name != "(no tabs)";
 
-            // Format: "dimension_name: tab_name"
-            let content = if result.tab_name == "(no tabs)" {
-                format!("{} (no tabs)", result.dimension_name)
-            } else {
-                format!("{}: {}", result.dimension_name, result.tab_name)
+            let base_style = match result.match_type {
+                MatchType::Both => Style::default().fg(Color::White),
+                MatchType::DimensionOnly => Style::default().fg(Color::Gray),
+                MatchType::TabOnly => Style::default().fg(Color::White),
             };
 
-            let style = if is_current {
-                Style::default()
-                    .fg(Color::Green)
-                    .add_modifier(Modifier::BOLD)
-            } else if is_selected {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+            let dim_style = if is_current_session {
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
             } else {
-                // Dim slightly based on match type
-                match result.match_type {
-                    MatchType::Both => Style::default().fg(Color::White),
-                    MatchType::DimensionOnly => Style::default().fg(Color::Gray),
-                    MatchType::TabOnly => Style::default().fg(Color::White),
+                base_style
+            };
+
+            let tab_style = if is_current_tab {
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            } else {
+                base_style
+            };
+
+            let mut spans = Vec::new();
+            let separator_style = base_style;
+
+            // Dimension name (green only for the current session).
+            spans.push(Span::styled(result.dimension_name.clone(), dim_style));
+
+            if result.tab_name == "(no tabs)" {
+                spans.push(Span::styled(" (no tabs)", tab_style));
+            } else {
+                spans.push(Span::styled(": ", separator_style));
+                spans.push(Span::styled(result.tab_name.clone(), tab_style));
+
+                if is_current_tab {
+                    spans.push(Span::styled(" *", tab_style));
                 }
-            };
+            }
 
-            ListItem::new(content).style(style)
+            ListItem::new(Line::from(spans))
         })
         .collect();
 
@@ -283,7 +285,11 @@ fn render_search_results(f: &mut Frame, app: &App, area: Rect) {
                 .add_modifier(Modifier::BOLD),
         );
 
-    f.render_widget(list, area);
+    let mut state = ListState::default();
+    if !app.search_results.is_empty() && app.search_selected_index < app.search_results.len() {
+        state.select(Some(app.search_selected_index));
+    }
+    f.render_stateful_widget(list, area, &mut state);
 }
 
 fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {

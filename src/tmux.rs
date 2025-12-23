@@ -150,7 +150,9 @@ impl Tmux {
     /// Create a new window in a session
     pub fn new_window(session: &str, name: &str, command: Option<&str>) -> Result<()> {
         let mut cmd = Command::new("tmux");
-        cmd.args(["new-window", "-t", session, "-n", name]);
+        // Use `session:` to unambiguously target the session (tmux `-t` expects a target-window).
+        // `-d` avoids switching the current client to the newly-created window.
+        cmd.args(["new-window", "-d", "-t", &format!("{}:", session), "-n", name]);
 
         if let Some(command) = command {
             cmd.arg(command);
