@@ -94,6 +94,9 @@ pub fn update_instructions(latest_tag: &str) -> String {
   # Installer (recommended)\n\
   curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/{tag}/install.sh | sh -s -- --version {tag}\n\
 \n\
+  # If you have multiple installs on PATH, update the one you're using:\n\
+  curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/{tag}/install.sh | sh -s -- --version {tag} --dir \"$(dirname \"$(command -v dimensions)\")\"\n\
+\n\
 Or download the binary from:\n\
   https://github.com/KarlVM12/Dimensions/releases/tag/{tag}\n",
         tag = latest_tag

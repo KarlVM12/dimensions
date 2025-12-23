@@ -64,10 +64,19 @@ fn main() -> Result<()> {
             return Ok(());
         }
 
+        // Install into the directory of the currently-running binary so PATH precedence doesn't
+        // cause the update to appear to "not work" (e.g. ~/.cargo/bin vs ~/.local/bin).
+        let install_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .and_then(|d| d.to_str().map(|s| s.to_string()))
+            .unwrap_or_else(|| String::from(format!("{}/.local/bin", std::env::var("HOME").unwrap_or_default())));
+
         // Run the installer pinned to the latest tag.
         let cmd = format!(
-            "curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/{tag}/install.sh | sh -s -- --version {tag}",
-            tag = tag
+            "curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/{tag}/install.sh | sh -s -- --version {tag} --dir \"{dir}\"",
+            tag = tag,
+            dir = install_dir
         );
         let status = std::process::Command::new("sh")
             .arg("-c")
