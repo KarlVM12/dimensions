@@ -177,13 +177,7 @@ impl App {
             anyhow::bail!("Dimension '{}' already exists", name);
         }
 
-        // Create tmux session
-        Tmux::create_session(&name, true)?;
-
-        // Configure minimal status bar
-        let _ = Tmux::set_minimal_status_bar();
-
-        // Add to config
+        // Add to config only - tmux session will be created when switching to it
         let dimension = Dimension::new(name.clone());
         self.config.add_dimension(dimension);
         self.save_config()?;
@@ -225,6 +219,8 @@ impl App {
     pub fn switch_to_dimension(&mut self) -> Result<()> {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
             let name = dimension.name.clone();
+            let has_tabs = !dimension.tabs.is_empty();
+            let tabs = dimension.tabs.clone();
 
             // Ensure tmux session exists
             if !Tmux::session_exists(&name) {
@@ -234,8 +230,8 @@ impl App {
                 let _ = Tmux::set_minimal_status_bar();
 
                 // If there are configured tabs, create windows for them
-                if !dimension.tabs.is_empty() {
-                    for (i, tab) in dimension.tabs.iter().enumerate() {
+                if has_tabs {
+                    for (i, tab) in tabs.iter().enumerate() {
                         if i == 0 {
                             // First window is created with the session, rename it to match first tab
                             Tmux::rename_window(&name, 0, &tab.name)?;
@@ -249,8 +245,16 @@ impl App {
                         }
                     }
                 } else {
-                    // No configured tabs, rename the default window to dimension name
-                    Tmux::rename_window(&name, 0, &format!("{}-1", name))?;
+                    // No configured tabs, create and save ad-hoc tab
+                    let ad_hoc_name = format!("{}-1", name);
+                    Tmux::rename_window(&name, 0, &ad_hoc_name)?;
+
+                    // Add ad-hoc tab to config
+                    let tab = Tab::new(ad_hoc_name, None);
+                    if let Some(dim) = self.config.dimensions.get_mut(self.selected_dimension) {
+                        dim.add_tab(tab);
+                        self.save_config()?;
+                    }
                 }
             }
 

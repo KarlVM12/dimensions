@@ -9,9 +9,11 @@
 
 Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and windows. It provides a visual interface to organize your terminal workflows into collapsible groups called "dimensions". Key features:
 
+- **🔍 Fuzzy search** - Live search across all dimensions and tabs with instant results
 - **✨ Visually collapse/expand tab groups** - Hide tabs you're not using
 - **🔄 Switch between dimensions** - All processes stay alive in the background
 - **💾 Persistent configuration** - Dimension names, tabs, and commands saved to disk
+- **⚡ Popup mode** - Quick access with Ctrl+G from anywhere (even inside vim/nvim)
 - **🎨 Beautiful interface** - Clean TUI built with ratatui
 - **🚀 Lightning fast** - Written in Rust, powered by tmux
 - **🖥️ Works on macOS & Linux** - Any terminal emulator (iTerm2, Alacritty, Wezterm, Kitty, etc.)
@@ -23,15 +25,14 @@ Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and win
 │ 🌌 Dimensions - Visual Tmux Session Manager        │
 ├────────────────────────────────────────────────────┤
 │ Dimensions          │ Tabs                         │
-│ ▼ dev (4 tabs)      │ 1. Editor                    │
-│   [active]          │ 2. Server (npm run dev)      │
-│ ▶ personal (2 tabs) │ 3. Tests                     │
-│ ▼ work (3 tabs)     │ 4. Logs                      │
+│ ▼ dev (4 tabs) *    │ 1. Editor                    │
+│ ▶ personal (2 tabs) │ 2. Server (npm run dev)      │
+│ ▼ work (3 tabs)     │ 3. Tests                     │
+│                     │ 4. Logs *                    │
 ├────────────────────────────────────────────────────┤
 │ Status: Created dimension: dev                     │
 ├────────────────────────────────────────────────────┤
-│ ↑/↓ Navigate  │ Space Collapse                     │
-│ Enter Switch  │ n New │ t Add Tab │ q Quit         │
+│ ↑/↓ Navigate  │ / Search │ Esc Close │ q Quit      │
 └────────────────────────────────────────────────────┘
 ```
 
@@ -85,11 +86,19 @@ dimensions
 
 ### Recommended tmux Configuration
 
-For the best experience, add this to your `~/.tmux.conf` to open Dimensions with a keybinding:
+For the best experience, add this to your `~/.tmux.conf`:
 
 ```bash
 # Bind Ctrl+G to open Dimensions in a popup (works even inside nvim/vim)
 bind -n C-g display-popup -E -w 80% -h 80% "dimensions"
+
+# Window configuration for Dimensions
+set -g base-index 0           # Start window numbering at 0
+set -g renumber-windows on    # Renumber windows when one is closed
+set -g mouse on               # Enable mouse support
+
+# Optional: Minimal status bar (avoids dimension name truncation)
+set -g status-left "🌌 "
 ```
 
 After adding this, reload your tmux config:
@@ -100,8 +109,8 @@ tmux source-file ~/.tmux.conf
 Now press `Ctrl+G` from anywhere (even inside nvim, Claude, or other programs) to:
 - Open Dimensions in a popup overlay
 - Navigate and select a dimension/tab
-- Press Enter to switch
-- Popup closes automatically
+- Press Enter to switch (popup closes and switches to selected tab)
+- Press Esc to close popup without switching
 
 **Alternative keybindings:**
 ```bash
@@ -131,9 +140,11 @@ dimensions
   - If on a specific tab: Switch to that tab
 - `n` - Create new dimension
 - `t` - Add new tab to current dimension
-- `d` - Delete current dimension
-- `x` - Remove selected tab
-- `/` - Search/filter tabs by name
+- `d` - **Context-sensitive delete:**
+  - If tab is selected (after pressing `→`): Delete that tab
+  - If on dimension (no tab selected): Delete entire dimension
+- `/` - **Fuzzy search** across all dimensions and tabs (live updates)
+- `Esc` - Close popup without switching (when in normal mode)
 - `q` - Quit TUI and **detach from tmux** (returns to normal shell)
 
 #### Input Mode (when creating dimension/tab)
@@ -142,9 +153,13 @@ dimensions
 - `Backspace` - Delete character
 
 #### Search Mode (when searching with `/`)
-- Type to filter tabs by name (case-insensitive)
-- `Enter` - Apply filter and stay in search mode
-- `Esc` - Clear search and return to normal mode
+- **Fuzzy matching** - Search updates live as you type (e.g., "edt" matches "Editor")
+- Searches both **dimension names** and **tab names** across all dimensions
+- Results shown as flat list: "dimension: tab_name"
+- Sorted by fuzzy match score (best matches first)
+- `↑/↓` - Navigate through search results
+- `Enter` - Select result and switch to that dimension/tab immediately
+- `Esc` - Cancel search and return to normal mode
 
 ### Workflows
 
@@ -163,7 +178,7 @@ dimensions
 1. Use `↑/↓` to select a dimension
 2. Press `Enter` to switch to it (TUI exits and attaches to tmux session)
 3. Your previous dimension's tabs stay running in the background
-4. Run `./dim` again to switch to another dimension
+4. Run `dimensions` again to switch to another dimension
 
 #### Switch to a Specific Tab
 
@@ -188,17 +203,32 @@ Sometimes you need a quick terminal without configuring it:
 2. Press `Space` to collapse/expand it
 3. Collapsed dimensions hide their tabs in the UI
 
+#### Use Fuzzy Search to Find Any Tab
+
+The fastest way to switch to any tab across all dimensions:
+
+1. Press `/` to start searching
+2. Start typing (search updates live) - e.g., type "ed" to find "Editor"
+3. Use `↑/↓` to navigate matching results
+4. Press `Enter` to switch immediately to the selected tab
+5. Or press `Esc` to cancel
+
+**Examples:**
+- Type "dev" → finds all tabs in "dev" dimension + any tab with "dev" in the name
+- Type "edt" → fuzzy matches "Editor" tab
+- Type "srv" → matches "Server" tab
+
 #### Return to Dimensions TUI
 
 When you're in a tmux session and want to switch dimensions:
-1. Run `./dim` (or `dimensions` if installed globally)
+1. Run `dimensions` (or `./target/release/dimensions` if not installed globally)
 2. The TUI will show you all your dimensions
 3. Navigate and press `Enter` to switch
 4. The TUI exits and switches you to the selected dimension/tab
 
-**Tip**: You can run `./dim` from any tab in any dimension!
+**Tip**: You can run `dimensions` from any tab in any dimension!
 
-**Note**: The tmux window names (shown in the tmux status bar) will reflect your tab names, not just "dim" or shell names.
+**Note**: The tmux window names (shown in the tmux status bar) will reflect your tab names (e.g., "Editor", "Server"), making it easy to identify which tab you're in.
 
 ## How It Works
 
@@ -235,8 +265,27 @@ When you're in a tmux session and want to switch dimensions:
 ### Data Storage
 
 Configuration is stored in an OS-specific location:
-- **macOS**: `~/Library/Application Support/dimensions/config.json`
+- **macOS**: `~/Library/Application\ Support/dimensions/config.json`
 - **Linux**: `~/.config/dimensions/config.json`
+
+#### How Config and tmux Work Together
+
+Dimensions uses a **hybrid storage approach**:
+
+1. **Config file** = Blueprint/template for dimensions
+   - Stores dimension names, configured tabs, and commands
+   - Saved when you create/delete dimensions or add/remove tabs through the UI
+
+2. **tmux sessions** = Live running state
+   - When a tmux session exists, Dimensions shows the actual windows from tmux
+   - Includes both configured tabs AND ad-hoc tabs you created
+
+3. **Bootstrap from config**
+   - When switching to a dimension without a tmux session, Dimensions creates it
+   - Creates windows based on the configured tabs in your config
+   - Runs any configured commands automatically
+
+**Example:** If your config has a "Server" tab with `npm run dev`, switching to that dimension will create the tmux window and run the command automatically.
 
 Example configuration:
 
@@ -250,11 +299,20 @@ Example configuration:
         {"name": "Claude", "command": null},
         {"name": "Server", "command": "npm run dev"}
       ]
+    },
+    {
+      "name": "personal",
+      "collapsed": true,
+      "tabs": [
+        {"name": "Email", "command": null},
+        {"name": "Music", "command": "spotify"}
+      ]
     }
-  ],
-  "active_dimension": "dev"
+  ]
 }
 ```
+
+**Note:** Ad-hoc tabs (created by pressing Enter on a dimension) exist in tmux but aren't saved to config.
 
 ## Features
 
@@ -265,7 +323,9 @@ Example configuration:
 - [x] Persist configuration
 - [x] tmux integration
 - [x] Keyboard navigation
-- [ ] Fuzzy search dimensions
+- [x] **Fuzzy search** across all dimensions and tabs (live updates)
+- [x] Visual indicators for current session/tab
+- [x] Popup mode with Ctrl+G keybinding
 - [ ] Edit dimension/tab names
 - [ ] Import/export configurations
 - [ ] Custom keybindings
@@ -290,11 +350,12 @@ apt install tmux   # Ubuntu/Debian
 
 PRs welcome! Some ideas:
 
-- Add fuzzy search with `skim`/`fzf` integration
+- Edit dimension/tab names in place
 - Support for saving/restoring working directories
 - Mouse support
 - Color themes
 - Shell completions
+- Export/import dimension configurations
 
 ## License
 
@@ -304,3 +365,4 @@ MIT
 
 - Built with [ratatui](https://github.com/ratatui-org/ratatui) for the TUI
 - Powered by [tmux](https://github.com/tmux/tmux) for session management
+- Fuzzy search powered by [fuzzy-matcher](https://github.com/lotabout/fuzzy-matcher)

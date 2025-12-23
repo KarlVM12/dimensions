@@ -5,6 +5,44 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2025-12-23
+
+### Added
+- **Fuzzy search** across all dimensions and tabs with live updates
+  - Press `/` to search, results update instantly as you type
+  - Non-consecutive character matching (e.g., "edt" matches "Editor")
+  - Searches both dimension names and tab names simultaneously
+  - Flat results view showing "dimension: tab_name" format
+  - Results sorted by fuzzy match score (best matches first)
+  - Navigate results with `↑/↓`, select with `Enter`
+- **Visual indicators** for current session and tab
+  - Green color + "*" marker shows your current dimension/tab
+  - Helps orient yourself when using Ctrl+G popup
+- Added `fuzzy-matcher` crate dependency for search functionality
+
+### Changed
+- **Close popup keybinding** changed from `c` to `Esc`
+  - `Esc` in normal mode: closes popup without switching
+  - `Esc` in search mode: cancels search and returns to normal mode
+  - More intuitive "escape" behavior
+- **Delete key `d` is now context-sensitive**
+  - If tab is selected: deletes the tab
+  - If on dimension (no tab selected): deletes the dimension
+  - Removed `x` key (now just use `d` for all deletions)
+- **Dimension creation** no longer auto-creates tmux session
+  - Creates dimension in config only
+  - tmux session created when you first switch to it
+  - Prevents unwanted default `0:zsh` window
+- Search now works globally across all dimensions (not just current dimension)
+- Search results show tabs from all dimensions in a single flat list
+- Improved search UX with live filtering instead of "apply filter" step
+
+### Technical
+- Added `MatchType` and `SearchResult` data structures
+- Implemented search result caching to avoid recalculation on every render
+- Updated UI to switch between two-column and single-column layouts based on search state
+- Enhanced input handling to support live search updates
+
 ## [0.1.1] - 2025-12-22
 
 ### Fixed
@@ -42,5 +80,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
+[0.2.0]: https://github.com/KarlVM12/Dimensions/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/KarlVM12/Dimensions/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/KarlVM12/Dimensions/releases/tag/v0.1.0

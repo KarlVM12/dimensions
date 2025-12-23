@@ -138,8 +138,14 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
         KeyCode::Char(' ') => app.toggle_collapse_dimension(),
         KeyCode::Char('n') => app.start_create_dimension(),
         KeyCode::Char('t') => app.start_add_tab(),
-        KeyCode::Char('d') => app.start_delete_dimension(),
-        KeyCode::Char('x') => app.remove_tab_from_current_dimension()?,
+        KeyCode::Char('d') => {
+            // Context-sensitive delete: tab if selected, otherwise dimension
+            if app.selected_tab.is_some() {
+                app.remove_tab_from_current_dimension()?;
+            } else {
+                app.start_delete_dimension();
+            }
+        }
         KeyCode::Char('/') => app.start_search(),
         KeyCode::Enter => {
             if let Err(e) = app.switch_to_dimension() {
