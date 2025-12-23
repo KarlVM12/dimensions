@@ -125,9 +125,10 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
         }
 
         // Get actual windows from tmux if session exists
-        let tabs: Vec<ListItem> = if Tmux::session_exists(&dimension.name) {
+        let (tabs, selected_pos): (Vec<ListItem>, Option<usize>) = if Tmux::session_exists(&dimension.name) {
             let windows = Tmux::list_windows(&dimension.name).unwrap_or_default();
-            windows
+            let mut selected_pos: Option<usize> = None;
+            let items: Vec<ListItem> = windows
                 .iter()
                 .filter(|(_, window_name)| {
                     // Filter based on search query
@@ -137,7 +138,11 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                         window_name.to_lowercase().contains(&app.search_query.to_lowercase())
                     }
                 })
-                .map(|(window_idx, window_name)| {
+                .enumerate()
+                .map(|(pos, (window_idx, window_name))| {
+                    if app.selected_tab == Some(*window_idx) {
+                        selected_pos = Some(pos);
+                    }
                     let is_current = app.current_session.as_ref() == Some(&dimension.name)
                         && app.current_window == Some(*window_idx);
 
@@ -165,9 +170,11 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                     ListItem::new(content).style(style)
                 })
                 .collect()
+            ;
+            (items, selected_pos)
         } else {
             // Session doesn't exist, show configured tabs
-            dimension
+            let items: Vec<ListItem> = dimension
                 .configured_tabs
                 .iter()
                 .enumerate()
@@ -190,9 +197,9 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
 
                     ListItem::new(content)
                 })
-                .collect()
+                .collect();
+            (items, app.selected_tab)
         };
-        let tabs_len = tabs.len();
 
         let title = match app.input_mode {
             InputMode::AddingTab => "Tabs (Format: name or name:command)",
@@ -208,11 +215,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
         );
 
         let mut state = ListState::default();
-        if let Some(selected_tab) = app.selected_tab {
-            if selected_tab < tabs_len {
-                state.select(Some(selected_tab));
-            }
-        }
+        state.select(selected_pos);
         f.render_stateful_widget(list, area, &mut state);
     } else {
         let text = Paragraph::new("No dimension selected")

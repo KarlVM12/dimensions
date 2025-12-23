@@ -93,8 +93,8 @@ For the best experience, add this to your `~/.tmux.conf`:
 bind -n C-g display-popup -E -w 80% -h 80% "dimensions"
 
 # Window configuration for Dimensions
-set -g base-index 0           # Start window numbering at 0
-set -g renumber-windows on    # Renumber windows when one is closed
+set -g base-index 0           # Optional: start window numbering at 0
+set -g renumber-windows on    # Optional: renumber windows when one is closed
 set -g mouse on               # Enable mouse support
 
 # Optional: Minimal status bar (avoids dimension name truncation)
@@ -138,7 +138,7 @@ dimensions
 - `Space` - Collapse/expand current dimension
 - `Enter` - Switch to the selected dimension/tab
   - If the dimension's tmux session doesn't exist yet, Dimensions creates it and bootstraps any configured tabs
-  - If the dimension has no configured tabs, Dimensions creates a starter tab named "`dimension-1`" and saves it
+  - If the dimension has no configured tabs, Dimensions creates a starter tmux window named "`dimension-1`" (not saved to config)
 - `n` - Create new dimension
 - `t` - Add new tab to current dimension
 - `d` - **Context-sensitive delete:**
@@ -311,7 +311,7 @@ Example configuration:
 }
 ```
 
-**Note:** Windows you create directly in tmux are not saved to config; only **configured tabs** you add via Dimensions are persisted (including the initial "`dimension-1`" starter tab for brand-new empty dimensions).
+**Note:** Windows you create directly in tmux are not saved to config; only **configured tabs** you add via Dimensions are persisted.
 
 ## Features
 

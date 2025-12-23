@@ -5,6 +5,15 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2025-12-23
+
+### Fixed
+- Robust tab selection/deletion/switching when tmux window indices are sparse or renumbered (selection tracks tmux window index, not list position)
+- Deleting the currently-active tab keeps Dimensions selection/current markers in sync with tmux
+
+### Changed
+- Dimensions no longer persists an automatic "`dimension-1`" starter tab into config; empty dimensions remain empty unless you add a configured tab via the UI
+
 ## [0.2.2] - 2025-12-23
 
 ### Internal
@@ -98,6 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
+[0.2.3]: https://github.com/KarlVM12/Dimensions/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/KarlVM12/Dimensions/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/KarlVM12/Dimensions/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/KarlVM12/Dimensions/compare/v0.1.1...v0.2.0

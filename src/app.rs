@@ -36,7 +36,11 @@ pub struct SearchResult {
 pub struct App {
     pub config: DimensionConfig,
     pub selected_dimension: usize,
-    pub selected_tab: Option<usize>, // None means dimension selected, Some(i) means tab i selected
+    // None means dimension selected.
+    // Some(i) means:
+    // - if the selected dimension's tmux session exists: tmux window index (#I)
+    // - otherwise: configured tab list index
+    pub selected_tab: Option<usize>,
     pub input_mode: InputMode,
     pub input_buffer: String,
     pub search_query: String,
@@ -144,37 +148,76 @@ impl App {
 
     pub fn next_tab(&mut self) {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
-            // Get actual window count from tmux if session exists
-            let tab_count = if Tmux::session_exists(&dimension.name) {
-                Tmux::get_window_count(&dimension.name).unwrap_or(dimension.configured_tabs.len())
-            } else {
-                dimension.configured_tabs.len()
-            };
-
-            if tab_count > 0 {
-                match self.selected_tab {
-                    None => self.selected_tab = Some(0), // First right arrow selects first tab
-                    Some(i) => self.selected_tab = Some((i + 1) % tab_count),
+            if Tmux::session_exists(&dimension.name) {
+                // Live tmux windows: track selection by tmux window index for robustness.
+                let windows = Tmux::list_windows(&dimension.name).unwrap_or_default();
+                if windows.is_empty() {
+                    self.selected_tab = None;
+                    return;
                 }
+
+                let next_idx = match self.selected_tab {
+                    None => windows[0].0,
+                    Some(current_window_idx) => {
+                        let pos = windows
+                            .iter()
+                            .position(|(idx, _)| *idx == current_window_idx)
+                            .unwrap_or(0);
+                        windows[(pos + 1) % windows.len()].0
+                    }
+                };
+                self.selected_tab = Some(next_idx);
+            } else {
+                // Configured tabs: track selection by configured tab index.
+                let tab_count = dimension.configured_tabs.len();
+                if tab_count == 0 {
+                    self.selected_tab = None;
+                    return;
+                }
+
+                self.selected_tab = Some(match self.selected_tab {
+                    None => 0, // First right arrow selects first tab
+                    Some(i) => (i + 1) % tab_count,
+                });
             }
         }
     }
 
     pub fn previous_tab(&mut self) {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
-            // Get actual window count from tmux if session exists
-            let tab_count = if Tmux::session_exists(&dimension.name) {
-                Tmux::get_window_count(&dimension.name).unwrap_or(dimension.configured_tabs.len())
-            } else {
-                dimension.configured_tabs.len()
-            };
-
-            if tab_count > 0 {
-                match self.selected_tab {
-                    None => self.selected_tab = Some(tab_count - 1), // Left arrow selects last tab
-                    Some(0) => self.selected_tab = None, // Wrap back to dimension
-                    Some(i) => self.selected_tab = Some(i - 1),
+            if Tmux::session_exists(&dimension.name) {
+                let windows = Tmux::list_windows(&dimension.name).unwrap_or_default();
+                if windows.is_empty() {
+                    self.selected_tab = None;
+                    return;
                 }
+
+                self.selected_tab = match self.selected_tab {
+                    None => Some(windows[windows.len() - 1].0), // Left arrow selects last tab
+                    Some(current_window_idx) => {
+                        let pos = windows
+                            .iter()
+                            .position(|(idx, _)| *idx == current_window_idx)
+                            .unwrap_or(0);
+                        if pos == 0 {
+                            None // Wrap back to dimension
+                        } else {
+                            Some(windows[pos - 1].0)
+                        }
+                    }
+                };
+            } else {
+                let tab_count = dimension.configured_tabs.len();
+                if tab_count == 0 {
+                    self.selected_tab = None;
+                    return;
+                }
+
+                self.selected_tab = match self.selected_tab {
+                    None => Some(tab_count - 1), // Left arrow selects last tab
+                    Some(0) => None, // Wrap back to dimension
+                    Some(i) => Some(i - 1),
+                };
             }
         }
     }
@@ -230,9 +273,10 @@ impl App {
             let name = dimension.name.clone();
             let has_tabs = !dimension.configured_tabs.is_empty();
             let tabs = dimension.configured_tabs.clone();
+            let session_preexisted = Tmux::session_exists(&name);
 
             // Ensure tmux session exists
-            if !Tmux::session_exists(&name) {
+            if !session_preexisted {
                 Tmux::create_session(&name, true)?;
 
                 // Configure minimal status bar
@@ -254,30 +298,30 @@ impl App {
                         }
                     }
                 } else {
-                    // No configured tabs, create and save ad-hoc tab
+                    // No configured tabs: create a starter tmux window, but don't persist it to config.
                     let ad_hoc_name = format!("{}-1", name);
                     Tmux::rename_window(&name, 0, &ad_hoc_name)?;
-
-                    // Add ad-hoc tab to config
-                    let tab = Tab::new(ad_hoc_name, None);
-                    if let Some(dim) = self.config.dimensions.get_mut(self.selected_dimension) {
-                        dim.add_tab(tab);
-                        self.save_config()?;
-                    }
                 }
             }
 
             // Determine which window to select
-            let window_index = if let Some(selected_tab) = self.selected_tab {
-                // Get the actual window index from tmux
-                if Tmux::session_exists(&name) {
-                    let windows = Tmux::list_windows(&name).unwrap_or_default();
-                    windows.get(selected_tab).map(|(idx, _)| *idx).unwrap_or(0)
-                } else {
-                    selected_tab
+            let window_index = match self.selected_tab {
+                None => 0,
+                Some(selected) => {
+                    if session_preexisted {
+                        // Selected is already a tmux window index; validate it still exists.
+                        let windows = Tmux::list_windows(&name).unwrap_or_default();
+                        if windows.iter().any(|(idx, _)| *idx == selected) {
+                            selected
+                        } else {
+                            0
+                        }
+                    } else {
+                        // Selected is a configured tab index; map to tmux window index after creation.
+                        let windows = Tmux::list_windows(&name).unwrap_or_default();
+                        windows.get(selected).map(|(idx, _)| *idx).unwrap_or(0)
+                    }
                 }
-            } else {
-                0
             };
 
             // Set the session and window to attach to after exiting TUI
@@ -322,8 +366,9 @@ impl App {
             // Get the actual window index and name from tmux
             if Tmux::session_exists(&session_name) {
                 let windows = Tmux::list_windows(&session_name)?;
-
-                if let Some((window_idx, window_name)) = windows.get(tab_index) {
+                if let Some((window_idx, window_name)) =
+                    windows.iter().find(|(idx, _)| *idx == tab_index)
+                {
                     let window_idx = *window_idx;
                     let window_name = window_name.clone();
 
@@ -343,13 +388,19 @@ impl App {
                     self.save_config()?;
                     self.set_message(format!("Removed tab: {}", window_name));
 
-                    // Adjust selection based on remaining window count
-                    let new_window_count = Tmux::get_window_count(&session_name).unwrap_or(0);
-                    if tab_index >= new_window_count && new_window_count > 0 {
-                        self.selected_tab = Some(new_window_count - 1);
-                    } else if new_window_count == 0 {
-                        self.selected_tab = None;
+                    // If we just killed the active window in the current session, tmux will
+                    // switch the client to another window. Keep our selection in sync.
+                    if self.current_session.as_ref() == Some(&session_name) && Tmux::is_inside_session() {
+                        if let Ok(current_idx) = Tmux::get_current_window_index() {
+                            self.current_window = Some(current_idx);
+                            self.selected_tab = Some(current_idx);
+                            return Ok(());
+                        }
                     }
+
+                    // Otherwise, adjust selection based on remaining windows (track by tmux window index).
+                    let remaining = Tmux::list_windows(&session_name).unwrap_or_default();
+                    self.selected_tab = remaining.first().map(|(idx, _)| *idx);
                 }
             } else {
                 // Session doesn't exist, just remove from config
@@ -586,7 +637,11 @@ impl App {
         if let Some(result) = self.search_results.get(self.search_selected_index) {
             // Update selection based on search result
             self.selected_dimension = result.dimension_index;
-            self.selected_tab = Some(result.tab_index);
+            self.selected_tab = if Tmux::session_exists(&result.dimension_name) {
+                Some(result.tmux_window_index)
+            } else {
+                Some(result.tab_index)
+            };
 
             // Clear search and return to normal mode
             self.input_mode = InputMode::Normal;
