@@ -42,5 +42,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
-[0.1.1]: https://github.com/yourusername/dimensions/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/yourusername/dimensions/releases/tag/v0.1.0
+[0.1.1]: https://github.com/KarlVM12/Dimensions/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/KarlVM12/Dimensions/releases/tag/v0.1.0

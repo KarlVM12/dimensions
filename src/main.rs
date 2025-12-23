@@ -50,6 +50,7 @@ fn main() -> Result<()> {
 
     // Get the session to attach to and detach flag before restoring terminal
     let should_attach = app.should_attach.clone();
+    let should_select_window = app.should_select_window;
     let should_detach = app.should_detach;
 
     // Restore terminal
@@ -71,13 +72,23 @@ fn main() -> Result<()> {
         // User pressed 'q' and we're in tmux - detach
         Tmux::detach()?;
     } else if let Some(session) = should_attach {
-        // User pressed Enter to switch - attach/switch to session
+        // Configure tmux status bar to show minimal info
+        let _ = Tmux::set_minimal_status_bar();
+
+        // Build target with window index if specified
+        let target = if let Some(window_index) = should_select_window {
+            format!("{}:{}", session, window_index)
+        } else {
+            session.clone()
+        };
+
+        // Switch/attach to the target session
         if Tmux::is_inside_session() {
-            // We're already in tmux, switch client
-            Tmux::switch_session(&session)?;
+            // We're in tmux, switch client
+            Tmux::switch_session(&target)?;
         } else {
             // Not in tmux, attach to session
-            Tmux::attach_session(&session)?;
+            Tmux::attach_session(&target)?;
         }
     }
 
@@ -104,7 +115,7 @@ fn run_app<B: ratatui::backend::Backend>(
 
                 match app.input_mode {
                     InputMode::Normal => handle_normal_mode(app, key.code)?,
-                    InputMode::CreatingDimension | InputMode::AddingTab => {
+                    InputMode::CreatingDimension | InputMode::AddingTab | InputMode::Searching => {
                         handle_input_mode(app, key.code)?
                     }
                     InputMode::DeletingDimension => handle_delete_mode(app, key.code)?,
@@ -119,6 +130,7 @@ fn run_app<B: ratatui::backend::Backend>(
 fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
     match key {
         KeyCode::Char('q') => app.quit(),
+        KeyCode::Char('c') => app.close_popup(),
         KeyCode::Char('j') | KeyCode::Down => app.next_dimension(),
         KeyCode::Char('k') | KeyCode::Up => app.previous_dimension(),
         KeyCode::Char('l') | KeyCode::Right => app.next_tab(),
@@ -128,6 +140,7 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
         KeyCode::Char('t') => app.start_add_tab(),
         KeyCode::Char('d') => app.start_delete_dimension(),
         KeyCode::Char('x') => app.remove_tab_from_current_dimension()?,
+        KeyCode::Char('/') => app.start_search(),
         KeyCode::Enter => {
             if let Err(e) = app.switch_to_dimension() {
                 app.set_message(format!("Error: {}", e));

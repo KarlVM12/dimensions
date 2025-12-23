@@ -51,15 +51,12 @@ impl Dimension {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DimensionConfig {
     pub dimensions: Vec<Dimension>,
-    #[serde(default)]
-    pub active_dimension: Option<String>,
 }
 
 impl Default for DimensionConfig {
     fn default() -> Self {
         Self {
             dimensions: vec![],
-            active_dimension: None,
         }
     }
 }
@@ -118,10 +115,5 @@ impl DimensionConfig {
     /// Get a mutable dimension by name
     pub fn get_dimension_mut(&mut self, name: &str) -> Option<&mut Dimension> {
         self.dimensions.iter_mut().find(|d| d.name == name)
-    }
-
-    /// Set the active dimension
-    pub fn set_active(&mut self, name: Option<String>) {
-        self.active_dimension = name;
     }
 }

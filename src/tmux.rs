@@ -37,6 +37,24 @@ impl Tmux {
         Ok(session)
     }
 
+    /// Get the current tmux window index
+    pub fn get_current_window_index() -> Result<usize> {
+        let output = Command::new("tmux")
+            .args(["display-message", "-p", "#I"])
+            .output()
+            .context("Failed to get current tmux window index")?;
+
+        if !output.status.success() {
+            anyhow::bail!("Not in a tmux session");
+        }
+
+        let index_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let index = index_str.parse::<usize>()
+            .context("Failed to parse window index")?;
+
+        Ok(index)
+    }
+
     /// List all tmux sessions
     pub fn list_sessions() -> Result<Vec<String>> {
         let output = Command::new("tmux")
@@ -151,15 +169,15 @@ impl Tmux {
         Ok(())
     }
 
-    /// List windows in a session
-    pub fn list_windows(session: &str) -> Result<Vec<String>> {
+    /// List windows in a session, returns (window_index, window_name) tuples
+    pub fn list_windows(session: &str) -> Result<Vec<(usize, String)>> {
         let output = Command::new("tmux")
             .args([
                 "list-windows",
                 "-t",
                 session,
                 "-F",
-                "#{window_name}",
+                "#{window_index}:#{window_name}",
             ])
             .output()
             .context("Failed to list tmux windows")?;
@@ -174,7 +192,14 @@ impl Tmux {
 
         let windows = String::from_utf8_lossy(&output.stdout)
             .lines()
-            .map(String::from)
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    parts[0].parse::<usize>().ok().map(|idx| (idx, parts[1].to_string()))
+                } else {
+                    None
+                }
+            })
             .collect();
 
         Ok(windows)
@@ -289,6 +314,44 @@ impl Tmux {
                 "Failed to rename session '{}' to '{}': {}",
                 old_name,
                 new_name,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Configure status bar to show minimal info (avoids truncation issues)
+    pub fn set_minimal_status_bar() -> Result<()> {
+        let output = Command::new("tmux")
+            .args(["set", "-g", "status-left", "🌌 "])
+            .output()
+            .context("Failed to set tmux status bar")?;
+
+        if !output.status.success() {
+            // Don't fail if this doesn't work, it's cosmetic
+            return Ok(());
+        }
+
+        Ok(())
+    }
+
+    /// Kill a window in a session by index
+    pub fn kill_window(session: &str, window_index: usize) -> Result<()> {
+        let output = Command::new("tmux")
+            .args([
+                "kill-window",
+                "-t",
+                &format!("{}:{}", session, window_index),
+            ])
+            .output()
+            .context("Failed to kill tmux window")?;
+
+        if !output.status.success() {
+            anyhow::bail!(
+                "Failed to kill window {} in session '{}': {}",
+                window_index,
+                session,
                 String::from_utf8_lossy(&output.stderr)
             );
         }

@@ -8,6 +8,7 @@ pub enum InputMode {
     CreatingDimension,
     AddingTab,
     DeletingDimension,
+    Searching,
 }
 
 pub struct App {
@@ -16,15 +17,28 @@ pub struct App {
     pub selected_tab: Option<usize>, // None means dimension selected, Some(i) means tab i selected
     pub input_mode: InputMode,
     pub input_buffer: String,
+    pub search_query: String,
     pub message: Option<String>,
     pub should_quit: bool,
     pub should_attach: Option<String>, // Session name to attach to after quitting
+    pub should_select_window: Option<usize>, // Window index to select after attaching
     pub should_detach: bool, // Whether to detach from tmux on quit
+    pub current_session: Option<String>, // Current tmux session when app was opened
+    pub current_window: Option<usize>, // Current tmux window index when app was opened
 }
 
 impl App {
     pub fn new() -> Result<Self> {
         let config = DimensionConfig::load()?;
+
+        // Detect current tmux session and window if inside tmux
+        let (current_session, current_window) = if Tmux::is_inside_session() {
+            let session = Tmux::get_current_session().ok();
+            let window = Tmux::get_current_window_index().ok();
+            (session, window)
+        } else {
+            (None, None)
+        };
 
         Ok(Self {
             config,
@@ -32,10 +46,14 @@ impl App {
             selected_tab: None, // Start with dimension selected, not a tab
             input_mode: InputMode::Normal,
             input_buffer: String::new(),
+            search_query: String::new(),
             message: None,
             should_quit: false,
             should_attach: None,
+            should_select_window: None,
             should_detach: false,
+            current_session,
+            current_window,
         })
     }
 
@@ -51,6 +69,12 @@ impl App {
     pub fn quit_without_detach(&mut self) {
         self.should_quit = true;
         self.should_detach = false; // Used when switching dimensions
+    }
+
+    pub fn close_popup(&mut self) {
+        self.should_quit = true;
+        self.should_detach = false;
+        // Don't set should_attach - just close and stay where we are
     }
 
     pub fn set_message(&mut self, msg: String) {
@@ -82,10 +106,17 @@ impl App {
 
     pub fn next_tab(&mut self) {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
-            if !dimension.tabs.is_empty() {
+            // Get actual window count from tmux if session exists
+            let tab_count = if Tmux::session_exists(&dimension.name) {
+                Tmux::get_window_count(&dimension.name).unwrap_or(dimension.tabs.len())
+            } else {
+                dimension.tabs.len()
+            };
+
+            if tab_count > 0 {
                 match self.selected_tab {
                     None => self.selected_tab = Some(0), // First right arrow selects first tab
-                    Some(i) => self.selected_tab = Some((i + 1) % dimension.tabs.len()),
+                    Some(i) => self.selected_tab = Some((i + 1) % tab_count),
                 }
             }
         }
@@ -93,9 +124,16 @@ impl App {
 
     pub fn previous_tab(&mut self) {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
-            if !dimension.tabs.is_empty() {
+            // Get actual window count from tmux if session exists
+            let tab_count = if Tmux::session_exists(&dimension.name) {
+                Tmux::get_window_count(&dimension.name).unwrap_or(dimension.tabs.len())
+            } else {
+                dimension.tabs.len()
+            };
+
+            if tab_count > 0 {
                 match self.selected_tab {
-                    None => self.selected_tab = Some(dimension.tabs.len() - 1), // Left arrow selects last tab
+                    None => self.selected_tab = Some(tab_count - 1), // Left arrow selects last tab
                     Some(0) => self.selected_tab = None, // Wrap back to dimension
                     Some(i) => self.selected_tab = Some(i - 1),
                 }
@@ -112,6 +150,9 @@ impl App {
 
         // Create tmux session
         Tmux::create_session(&name, true)?;
+
+        // Configure minimal status bar
+        let _ = Tmux::set_minimal_status_bar();
 
         // Add to config
         let dimension = Dimension::new(name.clone());
@@ -160,6 +201,9 @@ impl App {
             if !Tmux::session_exists(&name) {
                 Tmux::create_session(&name, true)?;
 
+                // Configure minimal status bar
+                let _ = Tmux::set_minimal_status_bar();
+
                 // If there are configured tabs, create windows for them
                 if !dimension.tabs.is_empty() {
                     for (i, tab) in dimension.tabs.iter().enumerate() {
@@ -181,37 +225,22 @@ impl App {
                 }
             }
 
-            // Check if we're already in this session
-            let already_in_session = Tmux::get_current_session()
-                .ok()
-                .map(|current| current == name)
-                .unwrap_or(false);
-
-            match self.selected_tab {
-                None => {
-                    // No tab selected - create ad-hoc window
-                    if already_in_session {
-                        // Get next available window number
-                        let window_count = Tmux::get_window_count(&name)?;
-                        let ad_hoc_name = format!("{}-{}", name, window_count + 1);
-                        Tmux::new_window(&name, &ad_hoc_name, None)?;
-                        Tmux::select_window(&name, window_count)?;
-                    }
+            // Determine which window to select
+            let window_index = if let Some(selected_tab) = self.selected_tab {
+                // Get the actual window index from tmux
+                if Tmux::session_exists(&name) {
+                    let windows = Tmux::list_windows(&name).unwrap_or_default();
+                    windows.get(selected_tab).map(|(idx, _)| *idx).unwrap_or(0)
+                } else {
+                    selected_tab
                 }
-                Some(tab_index) => {
-                    // Specific tab selected - go to that tab
-                    if already_in_session {
-                        Tmux::select_window(&name, tab_index)?;
-                    }
-                }
-            }
+            } else {
+                0
+            };
 
-            // Set the session to attach to after exiting TUI
-            self.should_attach = Some(name.clone());
-
-            // Update config
-            self.config.set_active(Some(name));
-            self.save_config()?;
+            // Set the session and window to attach to after exiting TUI
+            self.should_attach = Some(name);
+            self.should_select_window = Some(window_index);
 
             // Quit the TUI without detaching (we're switching/attaching to a session)
             self.quit_without_detach();
@@ -240,27 +269,65 @@ impl App {
 
     pub fn remove_tab_from_current_dimension(&mut self) -> Result<()> {
         if let Some(tab_index) = self.selected_tab {
-            let (tab_name, new_tab_count) = {
-                if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
-                    if let Some(tab) = dimension.remove_tab(tab_index) {
-                        (Some(tab.name), dimension.tabs.len())
-                    } else {
-                        (None, dimension.tabs.len())
-                    }
+            let session_name = {
+                if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
+                    dimension.name.clone()
                 } else {
-                    (None, 0)
+                    return Ok(());
                 }
             };
 
-            if let Some(name) = tab_name {
-                self.save_config()?;
-                self.set_message(format!("Removed tab: {}", name));
+            // Get the actual window index and name from tmux
+            if Tmux::session_exists(&session_name) {
+                let windows = Tmux::list_windows(&session_name)?;
 
-                // Adjust selection
-                if tab_index >= new_tab_count && new_tab_count > 0 {
-                    self.selected_tab = Some(new_tab_count - 1);
-                } else if new_tab_count == 0 {
-                    self.selected_tab = None;
+                if let Some((window_idx, window_name)) = windows.get(tab_index) {
+                    let window_idx = *window_idx;
+                    let window_name = window_name.clone();
+
+                    // Kill the tmux window
+                    Tmux::kill_window(&session_name, window_idx)?;
+
+                    // Remove from config if it exists there
+                    if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
+                        if let Some(config_index) = dimension.tabs.iter().position(|t| t.name == window_name) {
+                            dimension.remove_tab(config_index);
+                        }
+                    }
+                    self.save_config()?;
+                    self.set_message(format!("Removed tab: {}", window_name));
+
+                    // Adjust selection based on remaining window count
+                    let new_window_count = Tmux::get_window_count(&session_name).unwrap_or(0);
+                    if tab_index >= new_window_count && new_window_count > 0 {
+                        self.selected_tab = Some(new_window_count - 1);
+                    } else if new_window_count == 0 {
+                        self.selected_tab = None;
+                    }
+                }
+            } else {
+                // Session doesn't exist, just remove from config
+                let (removed_name, new_tab_count) = {
+                    if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
+                        if let Some(tab) = dimension.remove_tab(tab_index) {
+                            (Some(tab.name), dimension.tabs.len())
+                        } else {
+                            (None, dimension.tabs.len())
+                        }
+                    } else {
+                        (None, 0)
+                    }
+                };
+
+                if let Some(name) = removed_name {
+                    self.save_config()?;
+                    self.set_message(format!("Removed tab: {}", name));
+
+                    if tab_index >= new_tab_count && new_tab_count > 0 {
+                        self.selected_tab = Some(new_tab_count - 1);
+                    } else if new_tab_count == 0 {
+                        self.selected_tab = None;
+                    }
                 }
             }
         }
@@ -286,9 +353,20 @@ impl App {
         self.clear_message();
     }
 
+    pub fn start_search(&mut self) {
+        self.input_mode = InputMode::Searching;
+        self.input_buffer.clear();
+        self.search_query.clear();
+        self.clear_message();
+    }
+
     pub fn cancel_input(&mut self) {
+        let was_searching = self.input_mode == InputMode::Searching;
         self.input_mode = InputMode::Normal;
         self.input_buffer.clear();
+        if was_searching {
+            self.search_query.clear();
+        }
         self.clear_message();
     }
 
@@ -322,6 +400,11 @@ impl App {
                 if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
                     self.delete_dimension(&dimension.name.clone())?;
                 }
+            }
+            InputMode::Searching => {
+                // Update search query and stay in search mode
+                self.search_query = self.input_buffer.clone();
+                return Ok(());
             }
             InputMode::Normal => {}
         }

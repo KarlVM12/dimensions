@@ -1,37 +1,38 @@
 # Dimensions 🌌
 
-**Visual tab groups for your terminal using tmux** - Chrome/Firefox-style tab groups that actually work.
+**Visual tmux session manager with collapsible tab groups** - Organize your terminal workflows with an interactive TUI.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
 
 ## What is Dimensions?
 
-Dimensions is a TUI (Terminal User Interface) that brings Chrome/Firefox-style tab groups to your terminal using tmux. Unlike traditional tab managers, Dimensions lets you:
+Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and windows. It provides a visual interface to organize your terminal workflows into collapsible groups called "dimensions". Key features:
 
 - **✨ Visually collapse/expand tab groups** - Hide tabs you're not using
 - **🔄 Switch between dimensions** - All processes stay alive in the background
-- **💾 Persist your workflows** - Your dimensions are saved and restored
+- **💾 Persistent configuration** - Dimension names, tabs, and commands saved to disk
 - **🎨 Beautiful interface** - Clean TUI built with ratatui
 - **🚀 Lightning fast** - Written in Rust, powered by tmux
+- **🖥️ Works on macOS & Linux** - Any terminal emulator (iTerm2, Alacritty, Wezterm, Kitty, etc.)
 
 ## Demo
 
 ```
-┌─────────────────────────────────────┐
-│ 🌌 Dimensions - Tab Groups          │
-├─────────────────────────────────────┤
-│ Dimensions          │ Tabs          │
-│ ▼ dev (4 tabs)     │ 1. Claude     │
-│   [active]          │ 2. Editor     │
-│ ▶ personal (2 tabs)│ 3. Server     │
-│ ▼ work (3 tabs)    │ 4. Testing    │
-├─────────────────────────────────────┤
-│ Status: Created dimension: dev      │
-├─────────────────────────────────────┤
-│ ↑/↓ Navigate │ Space Collapse      │
-│ Enter Switch  │ n New │ q Quit      │
-└─────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│ 🌌 Dimensions - Visual Tmux Session Manager        │
+├────────────────────────────────────────────────────┤
+│ Dimensions          │ Tabs                         │
+│ ▼ dev (4 tabs)      │ 1. Editor                    │
+│   [active]          │ 2. Server (npm run dev)      │
+│ ▶ personal (2 tabs) │ 3. Tests                     │
+│ ▼ work (3 tabs)     │ 4. Logs                      │
+├────────────────────────────────────────────────────┤
+│ Status: Created dimension: dev                     │
+├────────────────────────────────────────────────────┤
+│ ↑/↓ Navigate  │ Space Collapse                     │
+│ Enter Switch  │ n New │ t Add Tab │ q Quit         │
+└────────────────────────────────────────────────────┘
 ```
 
 ## Why Dimensions?
@@ -57,7 +58,7 @@ Dimensions is a TUI (Terminal User Interface) that brings Chrome/Firefox-style t
 ### Build from Source
 
 ```bash
-git clone https://github.com/yourusername/dimensions.git
+git clone https://github.com/KarlVM12/Dimensions.git
 cd Dimensions
 cargo build --release
 
@@ -82,12 +83,39 @@ dimensions
 
 ## Usage
 
-### Launch Dimensions
+### Recommended tmux Configuration
+
+For the best experience, add this to your `~/.tmux.conf` to open Dimensions with a keybinding:
+
+```bash
+# Bind Ctrl+G to open Dimensions in a popup (works even inside nvim/vim)
+bind -n C-g display-popup -E -w 80% -h 80% "dimensions"
+```
+
+After adding this, reload your tmux config:
+```bash
+tmux source-file ~/.tmux.conf
+```
+
+Now press `Ctrl+G` from anywhere (even inside nvim, Claude, or other programs) to:
+- Open Dimensions in a popup overlay
+- Navigate and select a dimension/tab
+- Press Enter to switch
+- Popup closes automatically
+
+**Alternative keybindings:**
+```bash
+# Use Ctrl+D instead
+bind -n C-d display-popup -E -w 80% -h 80% "dimensions"
+
+# Use Prefix + Space (Ctrl+B then Space)
+bind Space display-popup -E -w 80% -h 80% "dimensions"
+```
+
+### Launch Dimensions Manually
 
 ```bash
 dimensions
-# or if you aliased it:
-dim
 ```
 
 ### Keyboard Shortcuts
@@ -105,12 +133,18 @@ dim
 - `t` - Add new tab to current dimension
 - `d` - Delete current dimension
 - `x` - Remove selected tab
+- `/` - Search/filter tabs by name
 - `q` - Quit TUI and **detach from tmux** (returns to normal shell)
 
 #### Input Mode (when creating dimension/tab)
 - `Enter` - Submit
 - `Esc` - Cancel
 - `Backspace` - Delete character
+
+#### Search Mode (when searching with `/`)
+- Type to filter tabs by name (case-insensitive)
+- `Enter` - Apply filter and stay in search mode
+- `Esc` - Clear search and return to normal mode
 
 ### Workflows
 
@@ -200,7 +234,11 @@ When you're in a tmux session and want to switch dimensions:
 
 ### Data Storage
 
-Configuration is stored in `~/.config/dimensions/config.json`:
+Configuration is stored in an OS-specific location:
+- **macOS**: `~/Library/Application Support/dimensions/config.json`
+- **Linux**: `~/.config/dimensions/config.json`
+
+Example configuration:
 
 ```json
 {
@@ -232,16 +270,6 @@ Configuration is stored in `~/.config/dimensions/config.json`:
 - [ ] Import/export configurations
 - [ ] Custom keybindings
 - [ ] Themes
-
-## Comparison
-
-| Feature | Dimensions | tmuxinator | zellij | Native Ghostty Tabs |
-|---------|-----------|------------|--------|-------------------|
-| Visual collapse | ✅ | ❌ | ❌ | ❌ |
-| Process persistence | ✅ | ✅ | ✅ | ❌ |
-| TUI interface | ✅ | ❌ | ✅ | ❌ |
-| Works anywhere | ✅ | ✅ | ✅ | ❌ (Ghostty only) |
-| Real-time switching | ✅ | ❌ | ✅ | N/A |
 
 ## Troubleshooting
 
@@ -276,9 +304,3 @@ MIT
 
 - Built with [ratatui](https://github.com/ratatui-org/ratatui) for the TUI
 - Powered by [tmux](https://github.com/tmux/tmux) for session management
-- Inspired by Chrome/Firefox tab groups
-- Created for the [Ghostty terminal](https://github.com/ghostty-org/ghostty)
-
----
-
-**Note**: For the original shell-based version, see [`dimensions-shell`](../dimensions-shell).

@@ -1,4 +1,5 @@
 use crate::app::{App, InputMode};
+use crate::tmux::Tmux;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -25,7 +26,7 @@ pub fn render(f: &mut Frame, app: &App) {
 }
 
 fn render_title(f: &mut Frame, area: Rect) {
-    let title = Paragraph::new("🌌 Dimensions - Tab Groups for Ghostty")
+    let title = Paragraph::new("🌌 Dimensions - Visual Tmux Session Manager")
         .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, area);
@@ -52,24 +53,34 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
         .enumerate()
         .map(|(i, dim)| {
             let is_selected = i == app.selected_dimension;
-            let is_active = app.config.active_dimension.as_ref() == Some(&dim.name);
+            let is_current = app.current_session.as_ref() == Some(&dim.name);
             let collapse_icon = if dim.collapsed { "▶" } else { "▼" };
-            let active_marker = if is_active { " [active]" } else { "" };
+
+            // Get actual window count from tmux if session exists
+            let tab_count = if Tmux::session_exists(&dim.name) {
+                Tmux::get_window_count(&dim.name).unwrap_or(dim.tabs.len())
+            } else {
+                dim.tabs.len()
+            };
+
+            let current_marker = if is_current { " *" } else { "" };
 
             let content = format!(
                 "{} {} ({} tabs){}",
                 collapse_icon,
                 dim.name,
-                dim.tabs.len(),
-                active_marker
+                tab_count,
+                current_marker
             );
 
-            let style = if is_selected {
+            let style = if is_current {
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_selected {
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD)
-            } else if is_active {
-                Style::default().fg(Color::Green)
             } else {
                 Style::default()
             };
@@ -105,31 +116,89 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
             return;
         }
 
-        let tabs: Vec<ListItem> = dimension
-            .tabs
-            .iter()
-            .enumerate()
-            .map(|(i, tab)| {
-                let is_selected = app.selected_tab == Some(i);
-                let command_text = tab
-                    .command
-                    .as_ref()
-                    .map(|c| format!(" ({})", c))
-                    .unwrap_or_default();
+        // Get actual windows from tmux if session exists
+        let tabs: Vec<ListItem> = if Tmux::session_exists(&dimension.name) {
+            let windows = Tmux::list_windows(&dimension.name).unwrap_or_default();
+            windows
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, window_name))| {
+                    // Filter based on search query
+                    if app.search_query.is_empty() {
+                        true
+                    } else {
+                        window_name.to_lowercase().contains(&app.search_query.to_lowercase())
+                    }
+                })
+                .map(|(list_idx, (window_idx, window_name))| {
+                    let is_selected = app.selected_tab == Some(list_idx);
+                    let is_current = app.current_session.as_ref() == Some(&dimension.name)
+                        && app.current_window == Some(*window_idx);
 
-                let content = format!("{}. {}{}", i + 1, tab.name, command_text);
+                    // Check if this window has a configured command
+                    let command_text = dimension
+                        .tabs
+                        .iter()
+                        .find(|t| &t.name == window_name)
+                        .and_then(|t| t.command.as_ref())
+                        .map(|c| format!(" ({})", c))
+                        .unwrap_or_default();
 
-                let style = if is_selected {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default()
-                };
+                    let current_marker = if is_current { " *" } else { "" };
 
-                ListItem::new(content).style(style)
-            })
-            .collect();
+                    let content = format!("{}. {}{}{}", window_idx, window_name, command_text, current_marker);
+
+                    let style = if is_current {
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD)
+                    } else if is_selected {
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+
+                    ListItem::new(content).style(style)
+                })
+                .collect()
+        } else {
+            // Session doesn't exist, show configured tabs
+            dimension
+                .tabs
+                .iter()
+                .enumerate()
+                .filter(|(_, tab)| {
+                    // Filter based on search query
+                    if app.search_query.is_empty() {
+                        true
+                    } else {
+                        tab.name.to_lowercase().contains(&app.search_query.to_lowercase())
+                    }
+                })
+                .map(|(i, tab)| {
+                    let is_selected = app.selected_tab == Some(i);
+                    let command_text = tab
+                        .command
+                        .as_ref()
+                        .map(|c| format!(" ({})", c))
+                        .unwrap_or_default();
+
+                    let content = format!("{}. {}{}", i, tab.name, command_text);
+
+                    let style = if is_selected {
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+
+                    ListItem::new(content).style(style)
+                })
+                .collect()
+        };
 
         let title = match app.input_mode {
             InputMode::AddingTab => "Tabs (Format: name or name:command)",
@@ -173,6 +242,14 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
             ));
             spans.push(Span::styled(" █", Style::default().fg(Color::White)));
         }
+        InputMode::Searching => {
+            spans.push(Span::raw("Search: /"));
+            spans.push(Span::styled(
+                app.input_buffer.clone(),
+                Style::default().fg(Color::Cyan),
+            ));
+            spans.push(Span::styled(" █", Style::default().fg(Color::White)));
+        }
         InputMode::DeletingDimension => {
             if let Some(dim) = app.get_current_dimension() {
                 spans.push(Span::styled(
@@ -202,13 +279,17 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
             ]),
             Line::from(vec![
                 Span::styled("Enter", Style::default().fg(Color::Yellow)),
-                Span::raw(" Switch to dimension  "),
+                Span::raw(" Switch  "),
                 Span::styled("n", Style::default().fg(Color::Yellow)),
-                Span::raw(" New dimension  "),
+                Span::raw(" New dim  "),
                 Span::styled("t", Style::default().fg(Color::Yellow)),
                 Span::raw(" New tab  "),
                 Span::styled("d", Style::default().fg(Color::Yellow)),
                 Span::raw(" Delete  "),
+                Span::styled("/", Style::default().fg(Color::Yellow)),
+                Span::raw(" Search  "),
+                Span::styled("c", Style::default().fg(Color::Yellow)),
+                Span::raw(" Close  "),
                 Span::styled("q", Style::default().fg(Color::Yellow)),
                 Span::raw(" Quit"),
             ]),
@@ -219,6 +300,15 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw(" Submit  "),
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::raw(" Cancel"),
+            ]),
+        ],
+        InputMode::Searching => vec![
+            Line::from(vec![
+                Span::raw("Type to filter tabs  "),
+                Span::styled("Enter", Style::default().fg(Color::Yellow)),
+                Span::raw(" Apply filter  "),
+                Span::styled("Esc", Style::default().fg(Color::Yellow)),
+                Span::raw(" Cancel search"),
             ]),
         ],
         InputMode::DeletingDimension => vec![
