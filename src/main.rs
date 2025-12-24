@@ -197,12 +197,18 @@ fn run_app<B: ratatui::backend::Backend>(
                     continue;
                 }
 
-                match app.input_mode {
-                    InputMode::Normal => handle_normal_mode(app, key.code)?,
+                let result = match app.input_mode {
+                    InputMode::Normal => handle_normal_mode(app, key.code),
                     InputMode::CreatingDimension | InputMode::AddingTab | InputMode::Searching => {
-                        handle_input_mode(app, key.code)?
+                        handle_input_mode(app, key.code)
                     }
-                    InputMode::DeletingDimension => handle_delete_mode(app, key.code)?,
+                    InputMode::DeletingDimension => handle_delete_mode(app, key.code),
+                };
+
+                // Display errors in status bar instead of crashing
+                if let Err(e) = result {
+                    app.cancel_input(); // Exit input mode so error message is visible
+                    app.set_message(format!("Error: {}", e));
                 }
             }
         }

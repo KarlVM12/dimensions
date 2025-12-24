@@ -136,7 +136,11 @@ impl Tmux {
         cmd.args(["new-window", "-d", "-t", &format!("{}:", session), "-n", name]);
 
         if let Some(command) = command {
-            cmd.arg(command);
+            // Execute command through shell and keep window open after command exits.
+            // This handles both one-shot commands (ls) and long-running commands (npm run dev).
+            // After the command exits, a shell is started so the user can see output and continue working.
+            let wrapped_command = format!("{}; exec $SHELL", command);
+            cmd.arg("sh").arg("-c").arg(wrapped_command);
         }
 
         let output = cmd.output().context("Failed to create tmux window")?;
