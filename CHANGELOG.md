@@ -5,6 +5,16 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.12] - 2025-12-25
+
+### Added
+- Tab deletion now prompts for confirmation (y/n), matching dimension deletion behavior
+- Shell aliases now work in tab commands (uses user's `$SHELL -i` instead of `sh`)
+
+### Changed
+- Simplified README - removed build from source, architecture diagrams, features checklist, troubleshooting, and license sections
+- GitHub release notes now only show changes (removed installation instructions)
+
 ## [0.2.11] - 2025-12-23
 
 ### Fixed
@@ -156,6 +166,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
+[0.2.12]: https://github.com/KarlVM12/Dimensions/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/KarlVM12/Dimensions/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/KarlVM12/Dimensions/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/KarlVM12/Dimensions/compare/v0.2.8...v0.2.9
