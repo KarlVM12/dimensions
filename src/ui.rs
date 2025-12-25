@@ -240,6 +240,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
 
         let title = match app.input_mode {
             InputMode::AddingTab => "Tabs (Format: name or name:command)",
+            InputMode::DeletingTab => "Tabs (Confirm delete? y/n)",
             _ => "Tabs",
         };
 
@@ -399,6 +400,33 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
                 ));
             }
         }
+        InputMode::DeletingTab => {
+            if let Some(dimension) = app.get_current_dimension() {
+                if let Some(tab_index) = app.selected_tab {
+                    // Get tab name from tmux or config
+                    let tab_name = if Tmux::session_exists(&dimension.name) {
+                        Tmux::list_windows(&dimension.name)
+                            .ok()
+                            .and_then(|windows| {
+                                windows.iter()
+                                    .find(|(idx, _)| *idx == tab_index)
+                                    .map(|(_, name)| name.clone())
+                            })
+                            .unwrap_or_else(|| "unknown".to_string())
+                    } else {
+                        dimension.configured_tabs
+                            .get(tab_index)
+                            .map(|t| t.name.clone())
+                            .unwrap_or_else(|| "unknown".to_string())
+                    };
+
+                    spans.push(Span::styled(
+                        format!("Delete tab '{}'? (y/n)", tab_name),
+                        Style::default().fg(Color::Red),
+                    ));
+                }
+            }
+        }
     }
 
     let status = Paragraph::new(Line::from(spans))
@@ -465,7 +493,7 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 ]
             }
         }
-        InputMode::DeletingDimension => vec![
+        InputMode::DeletingDimension | InputMode::DeletingTab => vec![
             Line::from(vec![
                 Span::styled("y", Style::default().fg(Color::Yellow)),
                 Span::raw(" Confirm  "),

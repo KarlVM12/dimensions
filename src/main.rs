@@ -202,7 +202,7 @@ fn run_app<B: ratatui::backend::Backend>(
                     InputMode::CreatingDimension | InputMode::AddingTab | InputMode::Searching => {
                         handle_input_mode(app, key.code)
                     }
-                    InputMode::DeletingDimension => handle_delete_mode(app, key.code),
+                    InputMode::DeletingDimension | InputMode::DeletingTab => handle_delete_mode(app, key.code),
                 };
 
                 // Display errors in status bar instead of crashing
@@ -230,7 +230,7 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
         KeyCode::Char('d') => {
             // Context-sensitive delete: tab if selected, otherwise dimension
             if app.selected_tab.is_some() {
-                app.remove_tab_from_current_dimension()?;
+                app.start_delete_tab();
             } else {
                 app.start_delete_dimension();
             }

@@ -14,6 +14,7 @@ pub enum InputMode {
     CreatingDimension,
     AddingTab,
     DeletingDimension,
+    DeletingTab,
     Searching,
 }
 
@@ -477,6 +478,11 @@ impl App {
         self.clear_message();
     }
 
+    pub fn start_delete_tab(&mut self) {
+        self.input_mode = InputMode::DeletingTab;
+        self.clear_message();
+    }
+
     pub fn start_search(&mut self) {
         self.input_mode = InputMode::Searching;
         self.input_buffer.clear();
@@ -546,6 +552,9 @@ impl App {
                 if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
                     self.delete_dimension(&dimension.name.clone())?;
                 }
+            }
+            InputMode::DeletingTab => {
+                self.remove_tab_from_current_dimension()?;
             }
             InputMode::Searching => {
                 // Live search updates query as user types, so nothing to do here

@@ -136,11 +136,13 @@ impl Tmux {
         cmd.args(["new-window", "-d", "-t", &format!("{}:", session), "-n", name]);
 
         if let Some(command) = command {
-            // Execute command through shell and keep window open after command exits.
-            // This handles both one-shot commands (ls) and long-running commands (npm run dev).
+            // Execute command through user's shell and keep window open after command exits.
+            // Use interactive shell (-i) to load RC files where aliases are defined.
+            // This handles aliases, one-shot commands (ls), and long-running commands (npm run dev).
             // After the command exits, a shell is started so the user can see output and continue working.
+            let user_shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
             let wrapped_command = format!("{}; exec $SHELL", command);
-            cmd.arg("sh").arg("-c").arg(wrapped_command);
+            cmd.arg(&user_shell).arg("-i").arg("-c").arg(wrapped_command);
         }
 
         let output = cmd.output().context("Failed to create tmux window")?;
