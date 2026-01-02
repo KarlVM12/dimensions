@@ -5,8 +5,10 @@
 ![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
 
 
-Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and windows. It provides a visual interface to organize your terminal workflows into groups called "dimensions".  <br>
-![Dimensions Demo](demo.gif) <br>
+Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and windows. It provides a visual interface to organize your terminal workflows into groups called "dimensions".  <br> <br>
+
+![Dimensions Demo](demo.gif) <br> <br>
+
 Key features:
 
 - **🔍 Fuzzy search** - Live search across all dimensions and tabs with instant results
