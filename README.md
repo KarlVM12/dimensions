@@ -1,13 +1,13 @@
 # Dimensions 🌌
 
-**Terminal Tab Manager** - Organize your terminal workflows with an interactive TUI.
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)
 
-## What is Dimensions?
 
-Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and windows. It provides a visual interface to organize your terminal workflows into groups called "dimensions". Key features:
+Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and windows. It provides a visual interface to organize your terminal workflows into groups called "dimensions".  <br>
+![Dimensions Demo](demo.gif) <br>
+Key features:
 
 - **🔍 Fuzzy search** - Live search across all dimensions and tabs with instant results
 - **🔄 Switch between dimensions** - All processes stay alive in the background
@@ -17,11 +17,6 @@ Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and win
 - **🚀 Lightning fast** - Written in Rust, powered by tmux
 - **🖥️ Works on macOS & Linux** - Any terminal emulator (iTerm2, Alacritty, Wezterm, Kitty, etc.)
 
-## Demo
-
-<video src="https://github.com/KarlVM12/Dimensions/raw/master/demo.mp4" controls width="100%">
-  Your browser doesn't support video.
-</video>
 
 ## Why Dimensions?
 
