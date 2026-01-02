@@ -65,8 +65,8 @@ esac
 TARGET=""
 if [ "$OS" = "darwin" ] && [ "$ARCH" = "x86_64" ]; then TARGET="x86_64-apple-darwin"; fi
 if [ "$OS" = "darwin" ] && [ "$ARCH" = "aarch64" ]; then TARGET="aarch64-apple-darwin"; fi
-if [ "$OS" = "linux" ] && [ "$ARCH" = "x86_64" ]; then TARGET="x86_64-unknown-linux-gnu"; fi
-if [ "$OS" = "linux" ] && [ "$ARCH" = "aarch64" ]; then TARGET="aarch64-unknown-linux-gnu"; fi
+if [ "$OS" = "linux" ] && [ "$ARCH" = "x86_64" ]; then TARGET="x86_64-unknown-linux-musl"; fi
+if [ "$OS" = "linux" ] && [ "$ARCH" = "aarch64" ]; then TARGET="aarch64-unknown-linux-musl"; fi
 
 if [ -z "$TARGET" ]; then
   echo "Unsupported platform combination: os=$OS arch=$ARCH" >&2

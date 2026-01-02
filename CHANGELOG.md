@@ -5,6 +5,11 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.13] - 2025-12-25
+
+### Fixed
+- Linux binaries now use musl instead of glibc for universal compatibility across all distributions (fixes "GLIBC_2.39 not found" errors on older systems)
+
 ## [0.2.12] - 2025-12-25
 
 ### Added
@@ -166,6 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
+[0.2.13]: https://github.com/KarlVM12/Dimensions/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/KarlVM12/Dimensions/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/KarlVM12/Dimensions/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/KarlVM12/Dimensions/compare/v0.2.9...v0.2.10
