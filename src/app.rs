@@ -358,9 +358,16 @@ impl App {
                         }
                     }
                 } else {
-                    // No configured tabs: create a starter tmux window, but don't persist it to config.
-                    let ad_hoc_name = format!("{}-1", name);
-                    Tmux::rename_window(&name, 0, &ad_hoc_name)?;
+                    // No configured tabs: create and save an initial tab
+                    let initial_tab_name = format!("{}-1", name);
+                    Tmux::rename_window(&name, 0, &initial_tab_name)?;
+
+                    // Save this initial tab to config so it persists across restarts
+                    let initial_tab = Tab::new(initial_tab_name, None, base_dir.clone());
+                    if let Some(dim) = self.config.dimensions.get_mut(self.selected_dimension) {
+                        dim.add_tab(initial_tab);
+                        self.save_config()?;
+                    }
                 }
             }
 
