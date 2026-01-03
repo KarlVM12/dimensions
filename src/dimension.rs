@@ -8,11 +8,13 @@ use std::path::PathBuf;
 pub struct Tab {
     pub name: String,
     pub command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub working_dir: Option<PathBuf>,
 }
 
 impl Tab {
-    pub fn new(name: String, command: Option<String>) -> Self {
-        Self { name, command }
+    pub fn new(name: String, command: Option<String>, working_dir: Option<PathBuf>) -> Self {
+        Self { name, command, working_dir }
     }
 }
 

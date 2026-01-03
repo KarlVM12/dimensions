@@ -129,19 +129,24 @@ impl Tmux {
     }
 
     /// Create a new window in a session
-    pub fn new_window(session: &str, name: &str, command: Option<&str>) -> Result<()> {
+    pub fn new_window(session: &str, name: &str, command: Option<&str>, working_dir: Option<&std::path::Path>) -> Result<()> {
         let mut cmd = Command::new("tmux");
         // Use `session:` to unambiguously target the session (tmux `-t` expects a target-window).
         // `-d` avoids switching the current client to the newly-created window.
         cmd.args(["new-window", "-d", "-t", &format!("{}:", session), "-n", name]);
 
-        if let Some(command) = command {
+        // Set working directory if provided
+        if let Some(dir) = working_dir {
+            cmd.args(["-c", dir.to_str().unwrap_or(".")]);
+        }
+
+        if let Some(user_command) = command {
             // Execute command through user's shell and keep window open after command exits.
             // Use interactive shell (-i) to load RC files where aliases are defined.
             // This handles aliases, one-shot commands (ls), and long-running commands (npm run dev).
             // After the command exits, a shell is started so the user can see output and continue working.
             let user_shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
-            let wrapped_command = format!("{}; exec $SHELL", command);
+            let wrapped_command = format!("{}; exec $SHELL", user_command);
             cmd.arg(&user_shell).arg("-i").arg("-c").arg(wrapped_command);
         }
 

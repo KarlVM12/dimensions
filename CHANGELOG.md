@@ -5,6 +5,12 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.14] - 2026-01-02
+
+### Added
+- Working directory persistence - tabs now remember and restore the directory they were created in
+- Tabs created from different directories will open in their original location after restart
+
 ## [0.2.13] - 2025-12-25
 
 ### Fixed
@@ -171,6 +177,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
+[0.2.14]: https://github.com/KarlVM12/Dimensions/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/KarlVM12/Dimensions/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/KarlVM12/Dimensions/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/KarlVM12/Dimensions/compare/v0.2.10...v0.2.11

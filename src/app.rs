@@ -317,12 +317,29 @@ impl App {
                             // First window is created with the session, rename it to match first tab
                             Tmux::rename_window(&name, 0, &tab.name)?;
 
-                            // If the first tab has a command, send it
-                            if let Some(cmd) = &tab.command {
-                                Tmux::send_keys(&name, 0, cmd)?;
+                            // Build command for first tab (with working dir if needed)
+                            let full_command = match (&tab.working_dir, &tab.command) {
+                                (Some(dir), Some(cmd)) => {
+                                    // Both working_dir and command: cd then run command
+                                    format!("cd {:?} && {}", dir, cmd)
+                                }
+                                (Some(dir), None) => {
+                                    // Only working_dir: just cd
+                                    format!("cd {:?}", dir)
+                                }
+                                (None, Some(cmd)) => {
+                                    // Only command: just run it
+                                    cmd.clone()
+                                }
+                                (None, None) => String::new(),
+                            };
+
+                            // Send command if we have one
+                            if !full_command.is_empty() {
+                                Tmux::send_keys(&name, 0, &full_command)?;
                             }
                         } else {
-                            Tmux::new_window(&name, &tab.name, tab.command.as_deref())?;
+                            Tmux::new_window(&name, &tab.name, tab.command.as_deref(), tab.working_dir.as_deref())?;
                         }
                     }
                 } else {
@@ -366,12 +383,15 @@ impl App {
     // Tab operations
     pub fn add_tab_to_current_dimension(&mut self, name: String, command: Option<String>) -> Result<()> {
         if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
-            let tab = Tab::new(name.clone(), command.clone());
+            // Capture current working directory
+            let working_dir = std::env::current_dir().ok();
+
+            let tab = Tab::new(name.clone(), command.clone(), working_dir.clone());
             dimension.add_tab(tab);
 
             // Create window in tmux if session exists
             if Tmux::session_exists(&dimension.name) {
-                Tmux::new_window(&dimension.name, &name, command.as_deref())?;
+                Tmux::new_window(&dimension.name, &name, command.as_deref(), working_dir.as_deref())?;
             }
 
             self.save_config()?;
