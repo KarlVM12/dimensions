@@ -22,15 +22,21 @@ impl Tab {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dimension {
     pub name: String,
+
+    // Base directory for this dimension (all tabs inherit this by default)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_dir: Option<PathBuf>,
+
     // Tabs persisted in config (used as a template when creating a tmux session).
     #[serde(rename = "tabs", default)]
     pub configured_tabs: Vec<Tab>,
 }
 
 impl Dimension {
-    pub fn new(name: String) -> Self {
+    pub fn new_with_base_dir(name: String, base_dir: Option<PathBuf>) -> Self {
         Self {
             name,
+            base_dir,
             configured_tabs: vec![],
         }
     }

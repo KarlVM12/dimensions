@@ -1,5 +1,6 @@
 mod app;
 mod dimension;
+mod path_completion;
 mod tmux;
 mod ui;
 mod update;
@@ -155,9 +156,6 @@ fn main() -> Result<()> {
         // User pressed 'q' and we're in tmux - detach
         Tmux::detach()?;
     } else if let Some(session) = should_attach {
-        // Configure tmux status bar to show minimal info
-        let _ = Tmux::set_minimal_status_bar();
-
         // Build target with window index if specified
         let target = if let Some(window_index) = should_select_window {
             format!("{}:{}", session, window_index)
@@ -199,7 +197,7 @@ fn run_app<B: ratatui::backend::Backend>(
 
                 let result = match app.input_mode {
                     InputMode::Normal => handle_normal_mode(app, key.code),
-                    InputMode::CreatingDimension | InputMode::AddingTab | InputMode::Searching => {
+                    InputMode::CreatingDimension | InputMode::CreatingDimensionDirectory | InputMode::AddingTab | InputMode::Searching => {
                         handle_input_mode(app, key.code)
                     }
                     InputMode::DeletingDimension | InputMode::DeletingTab => handle_delete_mode(app, key.code),
@@ -256,6 +254,14 @@ fn handle_input_mode(app: &mut App, key: KeyCode) -> Result<()> {
                 // Normal submit for other input modes
                 app.submit_input()?;
             }
+        }
+        KeyCode::Tab => {
+            // Handle tab completion for directory input
+            app.handle_tab_completion();
+        }
+        KeyCode::BackTab => {
+            // Handle backward tab completion for directory input
+            app.handle_backtab_completion();
         }
         KeyCode::Char(c) => app.handle_input_char(c),
         KeyCode::Backspace => app.handle_input_backspace(),

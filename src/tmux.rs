@@ -78,6 +78,29 @@ impl Tmux {
         Ok(())
     }
 
+    /// Create a new tmux session in a specific directory
+    pub fn create_session_with_dir(name: &str, detached: bool, start_dir: &str) -> Result<()> {
+        let mut cmd = Command::new("tmux");
+        cmd.args(["new-session", "-s", name, "-c", start_dir]);
+
+        if detached {
+            cmd.arg("-d");
+        }
+
+        let output = cmd.output().context("Failed to create tmux session")?;
+
+        if !output.status.success() {
+            anyhow::bail!(
+                "Failed to create session '{}' in directory '{}': {}",
+                name,
+                start_dir,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        Ok(())
+    }
+
     /// Kill a tmux session
     pub fn kill_session(name: &str) -> Result<()> {
         let output = Command::new("tmux")
@@ -275,21 +298,6 @@ impl Tmux {
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
-    }
-
-    /// Configure status bar to show minimal info (avoids truncation issues)
-    pub fn set_minimal_status_bar() -> Result<()> {
-        let output = Command::new("tmux")
-            .args(["set", "-g", "status-left", "🌌 "])
-            .output()
-            .context("Failed to set tmux status bar")?;
-
-        if !output.status.success() {
-            // Don't fail if this doesn't work, it's cosmetic
-            return Ok(());
-        }
-
-        Ok(())
     }
 
     /// Kill a window in a session by index

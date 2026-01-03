@@ -40,29 +40,26 @@ fn truncate_ellipsis(input: &str, max_width: usize) -> String {
     out
 }
 
-fn truncate_with_suffix(main: &str, suffix: &str, max_width: usize) -> String {
-    let suffix_width = suffix.width();
-    if max_width == 0 {
-        return String::new();
+fn format_path_with_tilde(path: &str) -> String {
+    if let Ok(home) = std::env::var("HOME") {
+        if path.starts_with(&home) {
+            return path.replacen(&home, "~", 1);
+        }
     }
-    if main.width() + suffix_width <= max_width {
-        return format!("{}{}", main, suffix);
-    }
-    if suffix_width >= max_width {
-        // Suffix alone doesn't fit; just truncate the combined string.
-        return truncate_ellipsis(&format!("{}{}", main, suffix), max_width);
-    }
-    let main_max = max_width - suffix_width;
-    format!("{}{}", truncate_ellipsis(main, main_max), suffix)
+    path.to_string()
 }
 
 pub fn render(f: &mut Frame, app: &mut App) {
+    let show_completion = app.input_mode == InputMode::CreatingDimensionDirectory
+        && app.completion_candidates.len() > 1;
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(3),  // Title
             Constraint::Min(0),     // Main content
             Constraint::Length(3),  // Status bar
+            Constraint::Length(if show_completion { 5 } else { 0 }),  // Completion overlay
             Constraint::Length(5),  // Help
         ])
         .split(f.area());
@@ -70,7 +67,14 @@ pub fn render(f: &mut Frame, app: &mut App) {
     render_title(f, chunks[0]);
     render_main_content(f, app, chunks[1]);
     render_status_bar(f, app, chunks[2]);
-    render_help(f, app, chunks[3]);
+
+    // Render completion overlay if applicable
+    if show_completion {
+        render_completion_overlay(f, app, chunks[3]);
+    }
+
+    // Help is always at index 4 (last chunk)
+    render_help(f, app, chunks[4]);
 }
 
 fn render_title(f: &mut Frame, area: Rect) {
@@ -104,7 +108,6 @@ fn render_main_content(f: &mut Frame, app: &mut App, area: Rect) {
 }
 
 fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
-    let max_width = inner_list_width(area);
     let dimensions: Vec<ListItem> = app
         .config
         .dimensions
@@ -121,9 +124,6 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
 
             let current_marker = if is_current { " *" } else { "" };
 
-            let suffix = format!(" ({} tabs){}", tab_count, current_marker);
-            let content = truncate_with_suffix(&dim.name, &suffix, max_width);
-
             let style = if is_current {
                 Style::default()
                     .fg(Color::Green)
@@ -132,14 +132,35 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
                 Style::default()
             };
 
-            ListItem::new(content).style(style)
+            // Create styled line with name, tab count, marker, and path (faded)
+            let mut spans = vec![
+                Span::styled(dim.name.clone(), style),
+                Span::styled(format!(" [{} tabs]", tab_count), style),
+                Span::styled(current_marker, style),
+            ];
+
+            if let Some(path) = dim.base_dir.as_ref().and_then(|p| p.to_str()) {
+                spans.push(Span::styled(
+                    format!(" ({})", format_path_with_tilde(path)),
+                    Style::default().fg(Color::Gray)
+                ));
+            }
+
+            ListItem::new(Line::from(spans))
         })
         .collect();
 
     let title = match app.input_mode {
-        InputMode::CreatingDimension => "Dimensions (Enter name)",
-        InputMode::DeletingDimension => "Dimensions (Confirm delete? y/n)",
-        _ => "Dimensions",
+        InputMode::CreatingDimension => "Dimensions (Enter name)".to_string(),
+        InputMode::CreatingDimensionDirectory => {
+            if let Some(name) = &app.pending_dimension_name {
+                format!("Creating '{}' - Enter base directory", name)
+            } else {
+                "Dimensions (Enter base directory)".to_string()
+            }
+        }
+        InputMode::DeletingDimension => "Dimensions (Confirm delete? y/n)".to_string(),
+        _ => "Dimensions".to_string(),
     };
 
     let list = List::new(dimensions)
@@ -159,7 +180,6 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
 
 fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
     if let Some(dimension) = app.get_current_dimension() {
-        let max_width = inner_list_width(area);
         // Get actual windows from tmux if session exists
         let (tabs, selected_pos): (Vec<ListItem>, Option<usize>) = if Tmux::session_exists(&dimension.name) {
             let windows = Tmux::list_windows(&dimension.name).unwrap_or_default();
@@ -182,20 +202,6 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                     let is_current = app.current_session.as_ref() == Some(&dimension.name)
                         && app.current_window == Some(*window_idx);
 
-                    // Check if this window has a configured command
-                    let command_text = dimension
-                        .configured_tabs
-                        .iter()
-                        .find(|t| &t.name == window_name)
-                        .and_then(|t| t.command.as_ref())
-                        .map(|c| format!(" ({})", c))
-                        .unwrap_or_default();
-
-                    let current_marker = if is_current { " *" } else { "" };
-
-                    let main = format!("{}. {}{}", window_idx, window_name, command_text);
-                    let content = truncate_with_suffix(&main, current_marker, max_width);
-
                     let style = if is_current {
                         Style::default()
                             .fg(Color::Green)
@@ -204,7 +210,32 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                         Style::default()
                     };
 
-                    ListItem::new(content).style(style)
+                    // Find configured tab for this window
+                    let configured_tab = dimension
+                        .configured_tabs
+                        .iter()
+                        .find(|t| &t.name == window_name);
+
+                    let current_marker = if is_current { " *" } else { "" };
+
+                    // Build spans with name, command, and marker
+                    let mut spans = vec![
+                        Span::styled(format!("{}. {}", window_idx, window_name), style)
+                    ];
+
+                    // Add command if available
+                    if let Some(tab) = configured_tab {
+                        if let Some(cmd) = &tab.command {
+                            spans.push(Span::styled(
+                                format!(" ({})", cmd),
+                                style
+                            ));
+                        }
+                    }
+
+                    spans.push(Span::styled(current_marker, style));
+
+                    ListItem::new(Line::from(spans))
                 })
                 .collect()
             ;
@@ -224,24 +255,33 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
                     }
                 })
                 .map(|(i, tab)| {
-                    let command_text = tab
-                        .command
-                        .as_ref()
-                        .map(|c| format!(" ({})", c))
-                        .unwrap_or_default();
+                    // Build spans with name and command
+                    let mut spans = vec![
+                        Span::raw(format!("{}. {}", i, tab.name))
+                    ];
 
-                    let content = truncate_ellipsis(&format!("{}. {}{}", i, tab.name, command_text), max_width);
+                    // Add command if available
+                    if let Some(cmd) = &tab.command {
+                        spans.push(Span::raw(format!(" ({})", cmd)));
+                    }
 
-                    ListItem::new(content)
+                    ListItem::new(Line::from(spans))
                 })
                 .collect();
             (items, app.selected_tab)
         };
 
         let title = match app.input_mode {
-            InputMode::AddingTab => "Tabs (Format: name or name:command)",
-            InputMode::DeletingTab => "Tabs (Confirm delete? y/n)",
-            _ => "Tabs",
+            InputMode::AddingTab => "Tabs (Format: name or name:command)".to_string(),
+            InputMode::DeletingTab => "Tabs (Confirm delete? y/n)".to_string(),
+            _ => {
+                // Show dimension's base_dir in the title if available
+                if let Some(path) = dimension.base_dir.as_ref().and_then(|p| p.to_str()) {
+                    format!("Tabs ({})", format_path_with_tilde(path))
+                } else {
+                    "Tabs".to_string()
+                }
+            }
         };
 
     let list = List::new(tabs)
@@ -384,6 +424,29 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
             ));
             spans.push(Span::styled(" █", Style::default().fg(Color::White)));
         }
+        InputMode::CreatingDimensionDirectory => {
+            spans.push(Span::raw("Directory: "));
+            spans.push(Span::styled(
+                app.input_buffer.clone(),
+                Style::default().fg(Color::Cyan),
+            ));
+            spans.push(Span::styled(" █", Style::default().fg(Color::White)));
+
+            // Show completion candidates if available, or hint to press Tab
+            if !app.completion_candidates.is_empty() {
+                spans.push(Span::raw(" "));
+                spans.push(Span::styled(
+                    format!("[{}/{}]", app.completion_index + 1, app.completion_candidates.len()),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            } else {
+                spans.push(Span::raw("  "));
+                spans.push(Span::styled(
+                    "Press Tab ⇥ for completion",
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC),
+                ));
+            }
+        }
         InputMode::Searching => {
             spans.push(Span::raw("Search: /"));
             spans.push(Span::styled(
@@ -469,6 +532,26 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw(" Cancel"),
             ]),
         ],
+        InputMode::CreatingDimensionDirectory => vec![
+            Line::from(vec![
+                Span::styled("Tab", Style::default().fg(Color::Yellow)),
+                Span::raw(" Next  "),
+                Span::styled("Shift+Tab", Style::default().fg(Color::Yellow)),
+                Span::raw(" Prev  "),
+                Span::styled("Enter", Style::default().fg(Color::Yellow)),
+                Span::raw(" Submit (empty for none)  "),
+                Span::styled("Esc", Style::default().fg(Color::Yellow)),
+                Span::raw(" Cancel"),
+            ]),
+            Line::from(vec![
+                Span::raw("Supports: "),
+                Span::styled("~/path", Style::default().fg(Color::Cyan)),
+                Span::raw(", "),
+                Span::styled("../relative", Style::default().fg(Color::Cyan)),
+                Span::raw(", "),
+                Span::styled("$VAR/path", Style::default().fg(Color::Cyan)),
+            ]),
+        ],
         InputMode::Searching => {
             if app.search_query.is_empty() {
                 // Before query is entered
@@ -507,4 +590,40 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
         .block(Block::default().title("Help").borders(Borders::ALL));
 
     f.render_widget(help, area);
+}
+
+fn render_completion_overlay(f: &mut Frame, app: &App, area: Rect) {
+    let max_candidates = 3;
+    let candidates_text: Vec<Line> = app.completion_candidates
+        .iter()
+        .enumerate()
+        .take(max_candidates)
+        .map(|(i, candidate)| {
+            let style = if i == app.completion_index {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+
+            let marker = if i == app.completion_index { "→ " } else { "  " };
+            Line::from(vec![
+                Span::styled(marker, style),
+                Span::styled(candidate.clone(), style),
+            ])
+        })
+        .collect();
+
+    let remaining = app.completion_candidates.len().saturating_sub(max_candidates);
+    let mut lines = candidates_text;
+    if remaining > 0 {
+        lines.push(Line::from(Span::styled(
+            format!("  ... {} more", remaining),
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let completion_widget = Paragraph::new(lines)
+        .block(Block::default().title("Matches (Tab to cycle)").borders(Borders::ALL));
+
+    f.render_widget(completion_widget, area);
 }

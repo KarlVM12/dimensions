@@ -5,6 +5,20 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.15] - 2026-01-03
+
+### Added
+- Base directory support for dimensions - set a default working directory when creating dimensions
+- Two-step dimension creation flow: prompt for name, then base directory
+- Shell-style directory tab completion with Tab/Shift+Tab navigation
+- Support for ~, relative paths (../), and environment variables ($VAR) in directory input
+- Visual path display: dimensions and tabs header show working directory in faded text
+- Paths display with ~ instead of full /Users/username/ for cleaner UI
+
+### Changed
+- Tabs now inherit their dimension's base directory automatically
+- Removed all dead code and unused functions for cleaner codebase
+
 ## [0.2.14] - 2026-01-02
 
 ### Added
@@ -177,6 +191,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
+[0.2.15]: https://github.com/KarlVM12/Dimensions/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/KarlVM12/Dimensions/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/KarlVM12/Dimensions/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/KarlVM12/Dimensions/compare/v0.2.11...v0.2.12

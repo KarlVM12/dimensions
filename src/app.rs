@@ -12,6 +12,7 @@ use std::thread;
 pub enum InputMode {
     Normal,
     CreatingDimension,
+    CreatingDimensionDirectory,
     AddingTab,
     DeletingDimension,
     DeletingTab,
@@ -62,6 +63,13 @@ pub struct App {
     pub should_detach: bool, // Whether to detach from tmux on quit
     pub current_session: Option<String>, // Current tmux session when app was opened
     pub current_window: Option<usize>, // Current tmux window index when app was opened
+
+    // Directory input completion state
+    pub pending_dimension_name: Option<String>, // Cache dimension name between creation steps
+    pub completion_candidates: Vec<String>, // Directory matches for tab completion
+    pub completion_index: usize, // Current selection when cycling through completions
+    pub completion_base: String, // Original input before cycling completions
+
     update_rx: Option<mpsc::Receiver<Option<String>>>,
 }
 
@@ -114,6 +122,10 @@ impl App {
             should_detach: false,
             current_session,
             current_window,
+            pending_dimension_name: None,
+            completion_candidates: Vec::new(),
+            completion_index: 0,
+            completion_base: String::new(),
             update_rx: Some(update_rx),
         })
     }
@@ -258,14 +270,14 @@ impl App {
     }
 
     // Dimension operations
-    pub fn create_dimension(&mut self, name: String) -> Result<()> {
+    pub fn create_dimension(&mut self, name: String, base_dir: Option<std::path::PathBuf>) -> Result<()> {
         // Check if dimension already exists
         if self.config.get_dimension(&name).is_some() {
             anyhow::bail!("Dimension '{}' already exists", name);
         }
 
         // Add to config only - tmux session will be created when switching to it
-        let dimension = Dimension::new(name.clone());
+        let dimension = Dimension::new_with_base_dir(name.clone(), base_dir);
         self.config.add_dimension(dimension);
         self.save_config()?;
 
@@ -299,16 +311,19 @@ impl App {
     pub fn switch_to_dimension(&mut self) -> Result<()> {
         if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
             let name = dimension.name.clone();
+            let base_dir = dimension.base_dir.clone();
             let has_tabs = !dimension.configured_tabs.is_empty();
             let tabs = dimension.configured_tabs.clone();
             let session_preexisted = Tmux::session_exists(&name);
 
             // Ensure tmux session exists
             if !session_preexisted {
-                Tmux::create_session(&name, true)?;
-
-                // Configure minimal status bar
-                let _ = Tmux::set_minimal_status_bar();
+                // Create session in base_dir if available
+                if let Some(dir) = base_dir.as_ref() {
+                    Tmux::create_session_with_dir(&name, true, dir.to_str().unwrap_or("."))?;
+                } else {
+                    Tmux::create_session(&name, true)?;
+                }
 
                 // If there are configured tabs, create windows for them
                 if has_tabs {
@@ -383,8 +398,9 @@ impl App {
     // Tab operations
     pub fn add_tab_to_current_dimension(&mut self, name: String, command: Option<String>) -> Result<()> {
         if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
-            // Capture current working directory
-            let working_dir = std::env::current_dir().ok();
+            // Inherit working_dir from dimension's base_dir, or use current_dir as fallback
+            let working_dir = dimension.base_dir.clone()
+                .or_else(|| std::env::current_dir().ok());
 
             let tab = Tab::new(name.clone(), command.clone(), working_dir.clone());
             dimension.add_tab(tab);
@@ -522,6 +538,8 @@ impl App {
         let was_searching = self.input_mode == InputMode::Searching;
         self.input_mode = InputMode::Normal;
         self.input_buffer.clear();
+        self.pending_dimension_name = None;
+        self.clear_completion_state();
         if was_searching {
             self.search_query.clear();
             self.search_results.clear();
@@ -536,6 +554,7 @@ impl App {
 
     pub fn handle_input_char(&mut self, c: char) {
         self.input_buffer.push(c);
+        self.clear_completion_state();
         // Live search: update search query as user types
         if self.input_mode == InputMode::Searching {
             self.search_query = self.input_buffer.clone();
@@ -544,9 +563,82 @@ impl App {
 
     pub fn handle_input_backspace(&mut self) {
         self.input_buffer.pop();
+        self.clear_completion_state();
         // Live search: update search query as user types
         if self.input_mode == InputMode::Searching {
             self.search_query = self.input_buffer.clone();
+        }
+    }
+
+    pub fn clear_completion_state(&mut self) {
+        self.completion_candidates.clear();
+        self.completion_base.clear();
+        self.completion_index = 0;
+    }
+
+    pub fn handle_tab_completion(&mut self) {
+        self.handle_tab_completion_direction(1);
+    }
+
+    pub fn handle_backtab_completion(&mut self) {
+        self.handle_tab_completion_direction(-1);
+    }
+
+    fn handle_tab_completion_direction(&mut self, direction: i32) {
+        use crate::path_completion::PathCompleter;
+
+        // Only complete in directory input mode
+        if self.input_mode != InputMode::CreatingDimensionDirectory {
+            return;
+        }
+
+        // If we're cycling through existing candidates
+        if !self.completion_candidates.is_empty() && !self.completion_base.is_empty() {
+            // Move to next/previous candidate
+            let len = self.completion_candidates.len() as i32;
+            self.completion_index = ((self.completion_index as i32 + direction + len) % len) as usize;
+            self.input_buffer = self.completion_candidates[self.completion_index].clone();
+            return;
+        }
+
+        // Fresh completion request (only for forward tab)
+        if direction < 0 {
+            return;
+        }
+
+        let input = self.input_buffer.trim();
+        let (candidates, common_prefix) = PathCompleter::complete_directory(input);
+
+        match candidates.len() {
+            0 => {
+                // No matches - do nothing
+            }
+            1 => {
+                // Single match - complete it fully and add trailing slash
+                let completed = format!("{}/", &candidates[0]);
+                self.input_buffer = completed;
+                // Clear completion state
+                self.completion_candidates.clear();
+                self.completion_base.clear();
+                self.completion_index = 0;
+            }
+            _ => {
+                // Multiple matches
+                if common_prefix.len() > input.len() {
+                    // There's a common prefix we can complete to
+                    self.input_buffer = common_prefix.clone();
+                    // Save state for cycling
+                    self.completion_base = common_prefix;
+                    self.completion_candidates = candidates;
+                    self.completion_index = 0;
+                } else {
+                    // No common prefix - start cycling through candidates
+                    self.completion_base = input.to_string();
+                    self.completion_candidates = candidates.clone();
+                    self.completion_index = 0;
+                    self.input_buffer = candidates[0].clone();
+                }
+            }
         }
     }
 
@@ -555,8 +647,46 @@ impl App {
             InputMode::CreatingDimension => {
                 let name = self.input_buffer.trim().to_string();
                 if !name.is_empty() {
-                    self.create_dimension(name)?;
+                    // Save the name and transition to directory input
+                    self.pending_dimension_name = Some(name);
+                    self.input_mode = InputMode::CreatingDimensionDirectory;
+                    self.input_buffer.clear();
+                    // Pre-fill with current directory as suggestion
+                    if let Ok(cwd) = std::env::current_dir() {
+                        if let Some(cwd_str) = cwd.to_str() {
+                            self.input_buffer = cwd_str.to_string();
+                        }
+                    }
+                    return Ok(());
                 }
+            }
+            InputMode::CreatingDimensionDirectory => {
+                use crate::path_completion::PathCompleter;
+
+                let input = self.input_buffer.trim();
+
+                // Allow empty input (no base directory)
+                if input.is_empty() {
+                    if let Some(name) = self.pending_dimension_name.take() {
+                        self.create_dimension(name, None)?;
+                    }
+                } else {
+                    // Validate the directory
+                    match PathCompleter::validate_directory(input) {
+                        Ok(path) => {
+                            if let Some(name) = self.pending_dimension_name.take() {
+                                self.create_dimension(name, Some(path))?;
+                            }
+                        }
+                        Err(err) => {
+                            self.set_message(err);
+                            return Ok(()); // Stay in input mode to allow correction
+                        }
+                    }
+                }
+
+                self.cancel_input();
+                return Ok(());
             }
             InputMode::AddingTab => {
                 let input = self.input_buffer.trim();
