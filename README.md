@@ -7,7 +7,8 @@
 
 Dimensions is a TUI (Terminal User Interface) for managing tmux sessions and windows. It provides a visual interface to organize your terminal workflows into groups called "dimensions".  <br> <br>
 
-![Dimensions Demo](demo.gif) <br> <br>
+<img width="1797" height="1048" alt="demo" src="https://github.com/user-attachments/assets/1e1b98ad-1e43-4156-9767-d1b2b212e1cf" />
+
 
 Key features:
 
