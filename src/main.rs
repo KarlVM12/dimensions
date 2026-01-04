@@ -197,7 +197,7 @@ fn run_app<B: ratatui::backend::Backend>(
 
                 let result = match app.input_mode {
                     InputMode::Normal => handle_normal_mode(app, key.code),
-                    InputMode::CreatingDimension | InputMode::CreatingDimensionDirectory | InputMode::AddingTab | InputMode::Searching => {
+                    InputMode::CreatingDimension | InputMode::CreatingDimensionDirectory | InputMode::AddingTab | InputMode::Searching | InputMode::JumpingToTab => {
                         handle_input_mode(app, key.code)
                     }
                     InputMode::DeletingDimension | InputMode::DeletingTab => handle_delete_mode(app, key.code),
@@ -207,6 +207,11 @@ fn run_app<B: ratatui::backend::Backend>(
                 if let Err(e) = result {
                     app.cancel_input(); // Exit input mode so error message is visible
                     app.set_message(format!("Error: {}", e));
+                }
+
+                // Update preview if selection changed
+                if app.should_refresh_preview() {
+                    app.update_preview();
                 }
             }
         }
@@ -234,6 +239,12 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
             }
         }
         KeyCode::Char('/') => app.start_search(),
+        KeyCode::Char(':') => {
+            // Only allow jump mode when dimension is selected
+            if !app.config.dimensions.is_empty() {
+                app.start_jump_to_tab();
+            }
+        }
         KeyCode::Enter => {
             if let Err(e) = app.switch_to_dimension() {
                 app.set_message(format!("Error: {}", e));

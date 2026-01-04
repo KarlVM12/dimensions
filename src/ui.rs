@@ -1,9 +1,10 @@
 use crate::app::{App, InputMode, MatchType};
 use crate::tmux::Tmux;
+use ansi_to_tui::IntoText;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
@@ -179,6 +180,19 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
+    // Check if we should show preview
+    let show_preview = app.preview_content.is_some() && app.selected_tab.is_some();
+
+    // Split area vertically: tabs list (top) and preview (bottom)
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(if show_preview {
+            [Constraint::Percentage(40), Constraint::Percentage(60)]
+        } else {
+            [Constraint::Percentage(100), Constraint::Length(0)]
+        })
+        .split(area);
+
     if let Some(dimension) = app.get_current_dimension() {
         // Get actual windows from tmux if session exists
         let (tabs, selected_pos): (Vec<ListItem>, Option<usize>) = if Tmux::session_exists(&dimension.name) {
@@ -294,12 +308,151 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
 
         let mut state = ListState::default();
         state.select(selected_pos);
-        f.render_stateful_widget(list, area, &mut state);
+        f.render_stateful_widget(list, chunks[0], &mut state);
     } else {
         let text = Paragraph::new("No dimension selected")
             .style(Style::default().fg(Color::DarkGray))
             .block(Block::default().title("Tabs").borders(Borders::ALL));
-        f.render_widget(text, area);
+        f.render_widget(text, chunks[0]);
+    }
+
+    // Render preview pane if showing
+    if show_preview {
+        render_preview_pane(f, app, chunks[1]);
+    }
+}
+
+fn render_preview_pane(f: &mut Frame, app: &App, area: Rect) {
+    let content = normalize_preview_content(app.preview_content.as_deref().unwrap_or(""));
+
+    // Build title
+    let title = if let (Some(session), Some(window)) = (&app.preview_session, &app.preview_window) {
+        format!("Preview: {}:{}", session, window)
+    } else {
+        "Preview".to_string()
+    };
+
+    // Parse ANSI escape codes into styled text and convert to ratatui types.
+    let parsed = content.as_bytes().into_text().unwrap_or_default();
+    let text = Text {
+        alignment: convert_alignment(parsed.alignment),
+        style: convert_style(parsed.style),
+        lines: parsed
+            .lines
+            .into_iter()
+            .map(|line| {
+                let spans: Vec<Span> = line
+                    .spans
+                    .into_iter()
+                    .map(|span| Span::styled(span.content.into_owned(), convert_style(span.style)))
+                    .collect();
+                Line {
+                    style: convert_style(line.style),
+                    alignment: convert_alignment(line.alignment),
+                    spans,
+                }
+            })
+            .collect(),
+    };
+
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let scroll_y = text.lines.len().saturating_sub(inner_height) as u16;
+    let paragraph = Paragraph::new(text)
+        .block(Block::default()
+            .title(title)
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray)))
+        .scroll((scroll_y, 0));
+
+    f.render_widget(paragraph, area);
+}
+
+fn normalize_preview_content(content: &str) -> String {
+    // Normalize CRLF and stray carriage returns that can skew TUI layout.
+    content.replace("\r\n", "\n").replace('\r', "")
+}
+
+// Helper functions to convert ratatui_core types into ratatui types.
+fn convert_color(color: ratatui_core::style::Color) -> Color {
+    use ratatui_core::style::Color as CoreColor;
+    match color {
+        CoreColor::Reset => Color::Reset,
+        CoreColor::Black => Color::Black,
+        CoreColor::Red => Color::Red,
+        CoreColor::Green => Color::Green,
+        CoreColor::Yellow => Color::Yellow,
+        CoreColor::Blue => Color::Blue,
+        CoreColor::Magenta => Color::Magenta,
+        CoreColor::Cyan => Color::Cyan,
+        CoreColor::Gray => Color::Gray,
+        CoreColor::DarkGray => Color::DarkGray,
+        CoreColor::LightRed => Color::LightRed,
+        CoreColor::LightGreen => Color::LightGreen,
+        CoreColor::LightYellow => Color::LightYellow,
+        CoreColor::LightBlue => Color::LightBlue,
+        CoreColor::LightMagenta => Color::LightMagenta,
+        CoreColor::LightCyan => Color::LightCyan,
+        CoreColor::White => Color::White,
+        CoreColor::Rgb(r, g, b) => Color::Rgb(r, g, b),
+        CoreColor::Indexed(i) => Color::Indexed(i),
+    }
+}
+
+fn convert_modifier(modifier: ratatui_core::style::Modifier) -> Modifier {
+    let mut result = Modifier::empty();
+
+    if modifier.contains(ratatui_core::style::Modifier::BOLD) {
+        result |= Modifier::BOLD;
+    }
+    if modifier.contains(ratatui_core::style::Modifier::DIM) {
+        result |= Modifier::DIM;
+    }
+    if modifier.contains(ratatui_core::style::Modifier::ITALIC) {
+        result |= Modifier::ITALIC;
+    }
+    if modifier.contains(ratatui_core::style::Modifier::UNDERLINED) {
+        result |= Modifier::UNDERLINED;
+    }
+    if modifier.contains(ratatui_core::style::Modifier::SLOW_BLINK) {
+        result |= Modifier::SLOW_BLINK;
+    }
+    if modifier.contains(ratatui_core::style::Modifier::RAPID_BLINK) {
+        result |= Modifier::RAPID_BLINK;
+    }
+    if modifier.contains(ratatui_core::style::Modifier::REVERSED) {
+        result |= Modifier::REVERSED;
+    }
+    if modifier.contains(ratatui_core::style::Modifier::HIDDEN) {
+        result |= Modifier::HIDDEN;
+    }
+    if modifier.contains(ratatui_core::style::Modifier::CROSSED_OUT) {
+        result |= Modifier::CROSSED_OUT;
+    }
+
+    result
+}
+
+fn convert_style(style: ratatui_core::style::Style) -> Style {
+    let mut converted = Style::default();
+    if let Some(fg) = style.fg {
+        converted = converted.fg(convert_color(fg));
+    }
+    if let Some(bg) = style.bg {
+        converted = converted.bg(convert_color(bg));
+    }
+    converted = converted.add_modifier(convert_modifier(style.add_modifier));
+    converted = converted.remove_modifier(convert_modifier(style.sub_modifier));
+    converted
+}
+
+fn convert_alignment(
+    alignment: Option<ratatui_core::layout::Alignment>,
+) -> Option<ratatui::layout::Alignment> {
+    match alignment {
+        Some(ratatui_core::layout::Alignment::Left) => Some(ratatui::layout::Alignment::Left),
+        Some(ratatui_core::layout::Alignment::Center) => Some(ratatui::layout::Alignment::Center),
+        Some(ratatui_core::layout::Alignment::Right) => Some(ratatui::layout::Alignment::Right),
+        None => None,
     }
 }
 
@@ -455,6 +608,14 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
             ));
             spans.push(Span::styled(" █", Style::default().fg(Color::White)));
         }
+        InputMode::JumpingToTab => {
+            spans.push(Span::raw("Jump to tab #"));
+            spans.push(Span::styled(
+                app.input_buffer.clone(),
+                Style::default().fg(Color::Yellow),
+            ));
+            spans.push(Span::styled(" █", Style::default().fg(Color::White)));
+        }
         InputMode::DeletingDimension => {
             if let Some(dim) = app.get_current_dimension() {
                 spans.push(Span::styled(
@@ -518,6 +679,8 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw(" Delete  "),
                 Span::styled("/", Style::default().fg(Color::Yellow)),
                 Span::raw(" Search  "),
+                Span::styled(":", Style::default().fg(Color::Yellow)),
+                Span::raw(" Jump  "),
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::raw(" Close  "),
                 Span::styled("q", Style::default().fg(Color::Yellow)),
@@ -576,6 +739,15 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 ]
             }
         }
+        InputMode::JumpingToTab => vec![
+            Line::from(vec![
+                Span::raw("Type window number to jump  "),
+                Span::styled("Enter", Style::default().fg(Color::Yellow)),
+                Span::raw(" Switch  "),
+                Span::styled("Esc", Style::default().fg(Color::Yellow)),
+                Span::raw(" Cancel"),
+            ]),
+        ],
         InputMode::DeletingDimension | InputMode::DeletingTab => vec![
             Line::from(vec![
                 Span::styled("y", Style::default().fg(Color::Yellow)),

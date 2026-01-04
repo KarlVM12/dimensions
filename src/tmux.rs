@@ -300,6 +300,45 @@ impl Tmux {
             .unwrap_or(false)
     }
 
+    /// Get the base-index option for a session (defaults to 0 if not set)
+    pub fn get_base_index(session: &str) -> Result<usize> {
+        let output = Command::new("tmux")
+            .args([
+                "show-options",
+                "-t",
+                session,
+                "-gv",  // get global value
+                "base-index"
+            ])
+            .output()
+            .context("Failed to get base-index from tmux")?;
+
+        if !output.status.success() {
+            // base-index not set, tmux defaults to 0
+            return Ok(0);
+        }
+
+        let index_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let index = index_str.parse::<usize>()
+            .unwrap_or(0);  // Default to 0 on parse error
+
+        Ok(index)
+    }
+
+    /// Get the first window index for a session (accounts for base-index)
+    pub fn get_first_window_index(session: &str) -> Result<usize> {
+        // Get base-index, fallback to detecting from actual windows
+        if let Ok(base) = Self::get_base_index(session) {
+            return Ok(base);
+        }
+
+        // Fallback: get first window from list
+        let windows = Self::list_windows(session)?;
+        windows.first()
+            .map(|(idx, _)| *idx)
+            .ok_or_else(|| anyhow::anyhow!("No windows in session"))
+    }
+
     /// Kill a window in a session by index
     pub fn kill_window(session: &str, window_index: usize) -> Result<()> {
         let output = Command::new("tmux")
@@ -321,5 +360,31 @@ impl Tmux {
         }
 
         Ok(())
+    }
+
+    /// Capture pane contents for a window
+    pub fn capture_pane(session: &str, window_index: usize) -> Result<String> {
+        let output = Command::new("tmux")
+            .args([
+                "capture-pane",
+                "-t",
+                &format!("{}:{}", session, window_index),
+                "-p",
+                "-e",  // Preserve ANSI escape sequences
+                "-J",
+            ])
+            .output()
+            .context("Failed to capture pane contents")?;
+
+        if !output.status.success() {
+            anyhow::bail!(
+                "Failed to capture pane for window {} in session '{}': {}",
+                window_index,
+                session,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 }

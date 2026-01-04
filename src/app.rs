@@ -17,6 +17,7 @@ pub enum InputMode {
     DeletingDimension,
     DeletingTab,
     Searching,
+    JumpingToTab,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +70,11 @@ pub struct App {
     pub completion_candidates: Vec<String>, // Directory matches for tab completion
     pub completion_index: usize, // Current selection when cycling through completions
     pub completion_base: String, // Original input before cycling completions
+
+    // Tab preview state
+    pub preview_content: Option<String>, // Captured pane contents
+    pub preview_session: Option<String>, // Session of cached preview
+    pub preview_window: Option<usize>, // Window index of cached preview
 
     update_rx: Option<mpsc::Receiver<Option<String>>>,
 }
@@ -126,6 +132,9 @@ impl App {
             completion_candidates: Vec::new(),
             completion_index: 0,
             completion_base: String::new(),
+            preview_content: None,
+            preview_session: None,
+            preview_window: None,
             update_rx: Some(update_rx),
         })
     }
@@ -330,7 +339,8 @@ impl App {
                     for (i, tab) in tabs.iter().enumerate() {
                         if i == 0 {
                             // First window is created with the session, rename it to match first tab
-                            Tmux::rename_window(&name, 0, &tab.name)?;
+                            let first_idx = Tmux::get_first_window_index(&name).unwrap_or(0);
+                            Tmux::rename_window(&name, first_idx, &tab.name)?;
 
                             // Build command for first tab (with working dir if needed)
                             let full_command = match (&tab.working_dir, &tab.command) {
@@ -351,7 +361,7 @@ impl App {
 
                             // Send command if we have one
                             if !full_command.is_empty() {
-                                Tmux::send_keys(&name, 0, &full_command)?;
+                                Tmux::send_keys(&name, first_idx, &full_command)?;
                             }
                         } else {
                             Tmux::new_window(&name, &tab.name, tab.command.as_deref(), tab.working_dir.as_deref())?;
@@ -360,7 +370,8 @@ impl App {
                 } else {
                     // No configured tabs: create and save an initial tab
                     let initial_tab_name = format!("{}-1", name);
-                    Tmux::rename_window(&name, 0, &initial_tab_name)?;
+                    let first_idx = Tmux::get_first_window_index(&name).unwrap_or(0);
+                    Tmux::rename_window(&name, first_idx, &initial_tab_name)?;
 
                     // Save this initial tab to config so it persists across restarts
                     let initial_tab = Tab::new(initial_tab_name, None, base_dir.clone());
@@ -373,7 +384,10 @@ impl App {
 
             // Determine which window to select
             let window_index = match self.selected_tab {
-                None => 0,
+                None => {
+                    // No tab selected, go to first window
+                    Tmux::get_first_window_index(&name).unwrap_or(0)
+                }
                 Some(selected) => {
                     if session_preexisted {
                         // Selected is already a tmux window index; validate it still exists.
@@ -381,12 +395,16 @@ impl App {
                         if windows.iter().any(|(idx, _)| *idx == selected) {
                             selected
                         } else {
-                            0
+                            // Fallback to first window
+                            windows.first().map(|(idx, _)| *idx)
+                                .unwrap_or_else(|| Tmux::get_first_window_index(&name).unwrap_or(0))
                         }
                     } else {
                         // Selected is a configured tab index; map to tmux window index after creation.
                         let windows = Tmux::list_windows(&name).unwrap_or_default();
-                        windows.get(selected).map(|(idx, _)| *idx).unwrap_or(0)
+                        windows.get(selected).map(|(idx, _)| *idx)
+                            .unwrap_or_else(|| windows.first().map(|(idx, _)| *idx)
+                                .unwrap_or_else(|| Tmux::get_first_window_index(&name).unwrap_or(0)))
                     }
                 }
             };
@@ -541,6 +559,12 @@ impl App {
         self.clear_message();
     }
 
+    pub fn start_jump_to_tab(&mut self) {
+        self.input_mode = InputMode::JumpingToTab;
+        self.input_buffer.clear();
+        self.clear_message();
+    }
+
     pub fn cancel_input(&mut self) {
         let was_searching = self.input_mode == InputMode::Searching;
         self.input_mode = InputMode::Normal;
@@ -560,6 +584,15 @@ impl App {
     }
 
     pub fn handle_input_char(&mut self, c: char) {
+        // For jump mode, only accept digits
+        if self.input_mode == InputMode::JumpingToTab {
+            if c.is_ascii_digit() {
+                self.input_buffer.push(c);
+                self.update_jump_selection();  // Live update
+            }
+            return;
+        }
+
         self.input_buffer.push(c);
         self.clear_completion_state();
         // Live search: update search query as user types
@@ -571,6 +604,12 @@ impl App {
     pub fn handle_input_backspace(&mut self) {
         self.input_buffer.pop();
         self.clear_completion_state();
+
+        // Live update for jump mode
+        if self.input_mode == InputMode::JumpingToTab {
+            self.update_jump_selection();
+        }
+
         // Live search: update search query as user types
         if self.input_mode == InputMode::Searching {
             self.search_query = self.input_buffer.clone();
@@ -718,6 +757,13 @@ impl App {
                 // Enter with results is handled in handle_input_mode -> select_search_result
                 return Ok(());
             }
+            InputMode::JumpingToTab => {
+                // If we have a valid selection, switch to it
+                if self.selected_tab.is_some() {
+                    self.switch_to_dimension()?;
+                }
+                return Ok(());
+            }
             InputMode::Normal => {}
         }
 
@@ -810,6 +856,57 @@ impl App {
         self.search_results.sort_by(|a, b| b.score.cmp(&a.score));
     }
 
+    pub fn update_jump_selection(&mut self) {
+        // Only work if we're in jump mode and have a dimension
+        if self.input_mode != InputMode::JumpingToTab {
+            return;
+        }
+
+        let Some(dimension) = self.config.dimensions.get(self.selected_dimension) else {
+            return;
+        };
+
+        // Only works if session exists
+        if !Tmux::session_exists(&dimension.name) {
+            return;
+        }
+
+        let Ok(windows) = Tmux::list_windows(&dimension.name) else {
+            return;
+        };
+
+        if windows.is_empty() {
+            return;
+        }
+
+        // Parse input as number
+        let input_num = self.input_buffer.trim();
+        if input_num.is_empty() {
+            // No input yet, stay on current selection
+            return;
+        }
+
+        // Find best matching window by prefix
+        let mut best_match: Option<usize> = None;
+
+        for (window_idx, _) in &windows {
+            let window_idx_str = window_idx.to_string();
+            if window_idx_str.starts_with(input_num) {
+                // Prefer exact matches, otherwise take first prefix match
+                if window_idx_str == input_num {
+                    best_match = Some(*window_idx);
+                    break;
+                } else if best_match.is_none() {
+                    best_match = Some(*window_idx);
+                }
+            }
+        }
+
+        if let Some(match_idx) = best_match {
+            self.selected_tab = Some(match_idx);
+        }
+    }
+
     pub fn next_search_result(&mut self) {
         if !self.search_results.is_empty() {
             self.search_selected_index = (self.search_selected_index + 1) % self.search_results.len();
@@ -846,5 +943,55 @@ impl App {
             self.switch_to_dimension()?;
         }
         Ok(())
+    }
+
+    pub fn should_refresh_preview(&self) -> bool {
+        let current_session = self.get_current_dimension().map(|d| d.name.as_str());
+        let preview_session = self.preview_session.as_ref().map(|s| s.as_str());
+        let changed_session = current_session != preview_session;
+        let changed_window = self.selected_tab != self.preview_window;
+        changed_session || changed_window || self.preview_content.is_none()
+    }
+
+    pub fn update_preview(&mut self) {
+        // Only proceed if we have a selected tab
+        let Some(tab_index) = self.selected_tab else {
+            self.clear_preview();
+            return;
+        };
+
+        // Get dimension name to avoid borrow issues
+        let dimension_name = match self.get_current_dimension() {
+            Some(d) => d.name.clone(),
+            None => {
+                self.clear_preview();
+                return;
+            }
+        };
+
+        // Only capture if session is running
+        if !Tmux::session_exists(&dimension_name) {
+            self.clear_preview();
+            return;
+        }
+
+        // Capture pane contents
+        match Tmux::capture_pane(&dimension_name, tab_index) {
+            Ok(content) => {
+                self.preview_content = Some(content);
+                self.preview_session = Some(dimension_name);
+                self.preview_window = Some(tab_index);
+            }
+            Err(_) => {
+                // Silent failure - preview is non-critical
+                self.clear_preview();
+            }
+        }
+    }
+
+    pub fn clear_preview(&mut self) {
+        self.preview_content = None;
+        self.preview_session = None;
+        self.preview_window = None;
     }
 }

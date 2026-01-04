@@ -1,6 +1,6 @@
 [package]
 name = "dimensions"
-version = "0.2.16"
+version = "0.2.17"
 description = "Terminal Tab Manager"
 edition = "2024"
 
@@ -15,3 +15,5 @@ fuzzy-matcher = "0.3"
 unicode-width = "0.2"
 semver = "1.0"
 ureq = { version = "2.12", default-features = true, features = ["json"] }
+ansi-to-tui = "8.0"
+ratatui-core = "0.1"
