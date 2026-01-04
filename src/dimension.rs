@@ -96,7 +96,12 @@ impl DimensionConfig {
     pub fn save(&self) -> Result<()> {
         let path = Self::config_path();
         let contents = serde_json::to_string_pretty(self)?;
-        fs::write(path, contents)?;
+
+        // Atomic write: write to temp file first, then rename
+        let temp_path = path.with_extension("json.tmp");
+        fs::write(&temp_path, contents)?;
+        fs::rename(temp_path, path)?;
+
         Ok(())
     }
 

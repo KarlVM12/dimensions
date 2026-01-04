@@ -336,18 +336,24 @@ fn render_preview_pane(f: &mut Frame, app: &App, area: Rect) {
     let parsed = content.as_bytes().into_text().unwrap_or_default();
     let text = Text {
         alignment: convert_alignment(parsed.alignment),
-        style: convert_style(parsed.style),
+        style: Style::default(), // Don't inherit global style
         lines: parsed
             .lines
             .into_iter()
             .map(|line| {
-                let spans: Vec<Span> = line
+                let mut spans: Vec<Span> = line
                     .spans
                     .into_iter()
                     .map(|span| Span::styled(span.content.into_owned(), convert_style(span.style)))
                     .collect();
+
+                // Ensure line ends with a style reset to prevent color bleeding to next line
+                if !spans.is_empty() {
+                    spans.push(Span::raw(""));
+                }
+
                 Line {
-                    style: convert_style(line.style),
+                    style: Style::default(), // Don't inherit line-level style
                     alignment: convert_alignment(line.alignment),
                     spans,
                 }
@@ -356,20 +362,87 @@ fn render_preview_pane(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let inner_height = area.height.saturating_sub(2) as usize;
-    let scroll_y = text.lines.len().saturating_sub(inner_height) as u16;
-    let paragraph = Paragraph::new(text)
+    let total_lines = text.lines.len();
+
+    // If content fits, show it all. Otherwise, show first 8, "...", last 8
+    let display_text = if total_lines <= inner_height {
+        text
+    } else {
+        let preview_lines = 8;
+        let mut lines = Vec::new();
+
+        // First 8 lines
+        lines.extend(text.lines.iter().take(preview_lines).cloned());
+
+        // Separator
+        lines.push(Line::from(Span::styled(
+            "...",
+            Style::default().fg(Color::DarkGray),
+        )));
+
+        // Last 8 lines
+        if total_lines > preview_lines {
+            lines.extend(
+                text.lines
+                    .iter()
+                    .skip(total_lines.saturating_sub(preview_lines))
+                    .cloned(),
+            );
+        }
+
+        Text::from(lines)
+    };
+
+    let paragraph = Paragraph::new(display_text)
         .block(Block::default()
             .title(title)
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::DarkGray)))
-        .scroll((scroll_y, 0));
+            .border_style(Style::default().fg(Color::DarkGray)));
 
     f.render_widget(paragraph, area);
 }
 
 fn normalize_preview_content(content: &str) -> String {
     // Normalize CRLF and stray carriage returns that can skew TUI layout.
-    content.replace("\r\n", "\n").replace('\r', "")
+    let normalized = content.replace("\r\n", "\n").replace('\r', "");
+
+    // Strip OSC 8 hyperlink sequences which break ansi-to-tui parsing
+    // Format: ESC ] 8 ; ; URL (BEL or ESC \) for opening
+    //         ESC ] 8 ; ; (BEL or ESC \) for closing
+    let bytes = normalized.as_bytes();
+    let mut result = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+
+    while i < bytes.len() {
+        // Check for ESC ] 8 ; sequence
+        if i + 4 <= bytes.len()
+            && bytes[i] == 0x1b      // ESC
+            && bytes[i + 1] == b']'   // ]
+            && bytes[i + 2] == b'8'   // 8
+            && bytes[i + 3] == b';'   // ;
+        {
+            // Skip the OSC 8 sequence until we find the terminator
+            i += 4;
+            while i < bytes.len() {
+                if bytes[i] == 0x07 {
+                    // BEL terminator
+                    i += 1;
+                    break;
+                } else if i + 1 < bytes.len() && bytes[i] == 0x1b && bytes[i + 1] == b'\\' {
+                    // ESC \ terminator
+                    i += 2;
+                    break;
+                }
+                i += 1;
+            }
+        } else {
+            // Keep this byte
+            result.push(bytes[i]);
+            i += 1;
+        }
+    }
+
+    String::from_utf8_lossy(&result).into_owned()
 }
 
 // Helper functions to convert ratatui_core types into ratatui types.

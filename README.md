@@ -19,6 +19,7 @@ Key features:
 - **🎨 Beautiful interface** - Clean TUI built with ratatui
 - **🚀 Lightning fast** - Written in Rust, powered by tmux
 - **🖥️ Works on macOS & Linux** - Any terminal emulator (iTerm2, Alacritty, Wezterm, Kitty, etc.)
+- **📑 Tab Preview** - Running tabs will show a live preview
 
 
 ## Why Dimensions?
@@ -99,6 +100,8 @@ bind Space display-popup -E -w 80% -h 80% "dimensions"
   - If tab is selected: Delete that tab
   - If on dimension: Delete entire dimension
 - `/` - **Fuzzy search** across all dimensions and tabs (live updates)
+- `:` - Jump to a tab in the dimension you are hovering over
+  - If you are hovering on a dimension typing `:2` will go to the third tab, finishing with `Enter` will bring you right in
 - `Esc` - Close popup without switching
 - `q` - Quit TUI and detach from tmux
 
@@ -106,6 +109,12 @@ bind Space display-popup -E -w 80% -h 80% "dimensions"
 - `Enter` - Submit
 - `Esc` - Cancel
 - `Backspace` - Delete character
+- **Adding Directory** - when creating a dimension, can specify which default directory for all the tabs to use as well
+  - Starts new path based on where you original started the `dimensions` command from
+  - Can accept env vars like `$HOME` or `$VAR` or relative pathing `..`
+  - `Tab` will cycle through all dirs from what you have, `Shift+Tab` to go to prev tabbed over
+  - `Enter` - Submit
+  - `Esc` - Cancel
 
 #### Search Mode (when searching with `/`)
 - **Fuzzy matching** - Search updates live as you type (e.g., "edt" matches "Editor")

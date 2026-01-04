@@ -5,6 +5,12 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.18] - 2026-01-04
+
+### Changed
+- Tab preview is now a full snippet of window, grabbing first 8, and last 8 lines, putting "..." inbetween the rest
+- Atomic writes on the dimensions config so changes aren't lost mid save
+
 ## [0.2.17] - 2026-01-03
 
 ### Added
@@ -203,6 +209,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
+[0.2.18]: https://github.com/KarlVM12/Dimensions/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/KarlVM12/Dimensions/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/KarlVM12/Dimensions/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/KarlVM12/Dimensions/compare/v0.2.14...v0.2.15
