@@ -300,19 +300,31 @@ impl App {
             anyhow::bail!("Dimension '{}' not found", name);
         }
 
+        // Save config first before killing anything
+        self.save_config()?;
+
+        // Adjust selection - handle empty list case
+        if self.config.dimensions.is_empty() {
+            self.selected_dimension = 0;
+        } else if self.selected_dimension >= self.config.dimensions.len() {
+            self.selected_dimension = self.config.dimensions.len() - 1;
+        }
+        self.selected_tab = None;
+
+        // Check if we're inside the dimension being deleted
+        let inside_target_dimension = self.current_session.as_ref() == Some(&name.to_string());
+
         // Kill tmux session if it exists
+        // NOTE: If we're inside this dimension, killing it will terminate Dimensions too
+        // But that's okay - config is already saved above, nothing we can really do about that one
         if Tmux::session_exists(name) {
             Tmux::kill_session(name)?;
         }
 
-        self.save_config()?;
-        self.set_message(format!("Deleted dimension: {}", name));
-
-        // Adjust selection
-        if self.selected_dimension >= self.config.dimensions.len() && self.selected_dimension > 0 {
-            self.selected_dimension -= 1;
+        // This code only runs if we weren't inside the deleted dimension
+        if !inside_target_dimension {
+            self.set_message(format!("Deleted dimension: {}", name));
         }
-        self.selected_tab = None;
 
         Ok(())
     }
