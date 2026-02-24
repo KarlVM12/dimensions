@@ -2,6 +2,7 @@
 name = "dimensions"
 version = "0.2.19"
 description = "Terminal Tab Manager"
+license = "MIT"
 edition = "2024"
 
 [dependencies]
