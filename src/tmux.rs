@@ -291,6 +291,25 @@ impl Tmux {
         Ok(())
     }
 
+    /// Rename a tmux session
+    pub fn rename_session(old_name: &str, new_name: &str) -> Result<()> {
+        let output = Command::new("tmux")
+            .args(["rename-session", "-t", old_name, new_name])
+            .output()
+            .context("Failed to rename tmux session")?;
+
+        if !output.status.success() {
+            anyhow::bail!(
+                "Failed to rename session '{}' to '{}': {}",
+                old_name,
+                new_name,
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        Ok(())
+    }
+
     /// Check if a session exists
     pub fn session_exists(name: &str) -> bool {
         Command::new("tmux")

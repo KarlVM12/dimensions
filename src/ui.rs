@@ -161,6 +161,7 @@ fn render_dimensions_list(f: &mut Frame, app: &App, area: Rect) {
             }
         }
         InputMode::DeletingDimension => "Dimensions (Confirm delete? y/n)".to_string(),
+        InputMode::RenamingDimension => "Dimensions (Rename)".to_string(),
         _ => "Dimensions".to_string(),
     };
 
@@ -288,6 +289,7 @@ fn render_tabs_list(f: &mut Frame, app: &App, area: Rect) {
         let title = match app.input_mode {
             InputMode::AddingTab => "Tabs (Format: name or name:command)".to_string(),
             InputMode::DeletingTab => "Tabs (Confirm delete? y/n)".to_string(),
+            InputMode::RenamingTab => "Tabs (Rename)".to_string(),
             _ => {
                 // Show dimension's base_dir in the title if available
                 if let Some(path) = dimension.base_dir.as_ref().and_then(|p| p.to_str()) {
@@ -650,6 +652,30 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
             ));
             spans.push(Span::styled(" █", Style::default().fg(Color::White)));
         }
+        InputMode::RenamingDimension => {
+            if let Some(msg) = &app.message {
+                spans.push(Span::styled(msg.clone(), Style::default().fg(Color::Red)));
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::raw("Rename dimension: "));
+            spans.push(Span::styled(
+                app.input_buffer.clone(),
+                Style::default().fg(Color::Yellow),
+            ));
+            spans.push(Span::styled(" █", Style::default().fg(Color::White)));
+        }
+        InputMode::RenamingTab => {
+            if let Some(msg) = &app.message {
+                spans.push(Span::styled(msg.clone(), Style::default().fg(Color::Red)));
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::raw("Rename tab: "));
+            spans.push(Span::styled(
+                app.input_buffer.clone(),
+                Style::default().fg(Color::Yellow),
+            ));
+            spans.push(Span::styled(" █", Style::default().fg(Color::White)));
+        }
         InputMode::CreatingDimensionDirectory => {
             spans.push(Span::raw("Directory: "));
             spans.push(Span::styled(
@@ -691,36 +717,47 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
         }
         InputMode::DeletingDimension => {
             if let Some(dim) = app.get_current_dimension() {
-                spans.push(Span::styled(
-                    format!("Delete dimension '{}'? (y/n)", dim.name),
-                    Style::default().fg(Color::Red),
-                ));
+                let is_current = app.current_session.as_deref() == Some(dim.name.as_str());
+                let msg = if is_current && Tmux::session_exists(&dim.name) {
+                    format!("Delete dimension '{}'? Will switch to first available tab (y/n)", dim.name)
+                } else {
+                    format!("Delete dimension '{}'? (y/n)", dim.name)
+                };
+                spans.push(Span::styled(msg, Style::default().fg(Color::Red)));
             }
         }
         InputMode::DeletingTab => {
             if let Some(dimension) = app.get_current_dimension() {
                 if let Some(tab_index) = app.selected_tab {
-                    // Get tab name from tmux or config
-                    let tab_name = if Tmux::session_exists(&dimension.name) {
-                        Tmux::list_windows(&dimension.name)
-                            .ok()
-                            .and_then(|windows| {
-                                windows.iter()
-                                    .find(|(idx, _)| *idx == tab_index)
-                                    .map(|(_, name)| name.clone())
-                            })
-                            .unwrap_or_else(|| "unknown".to_string())
+                    let is_current_session =
+                        app.current_session.as_deref() == Some(dimension.name.as_str());
+
+                    let (tab_name, is_last) = if Tmux::session_exists(&dimension.name) {
+                        let windows = Tmux::list_windows(&dimension.name).unwrap_or_default();
+                        let name = windows
+                            .iter()
+                            .find(|(idx, _)| *idx == tab_index)
+                            .map(|(_, name)| name.clone())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let is_last = windows.len() == 1;
+                        (name, is_last)
                     } else {
-                        dimension.configured_tabs
+                        let name = dimension
+                            .configured_tabs
                             .get(tab_index)
                             .map(|t| t.name.clone())
-                            .unwrap_or_else(|| "unknown".to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let is_last = dimension.configured_tabs.len() == 1;
+                        (name, is_last)
                     };
 
-                    spans.push(Span::styled(
-                        format!("Delete tab '{}'? (y/n)", tab_name),
-                        Style::default().fg(Color::Red),
-                    ));
+                    let msg = if is_last && is_current_session {
+                        format!("Delete last tab '{}'? Will switch to first available tab (y/n)", tab_name)
+                    } else {
+                        format!("Delete tab '{}'? (y/n)", tab_name)
+                    };
+
+                    spans.push(Span::styled(msg, Style::default().fg(Color::Red)));
                 }
             }
         }
@@ -750,6 +787,8 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw(" New tab  "),
                 Span::styled("d", Style::default().fg(Color::Yellow)),
                 Span::raw(" Delete  "),
+                Span::styled("r", Style::default().fg(Color::Yellow)),
+                Span::raw(" Rename  "),
                 Span::styled("/", Style::default().fg(Color::Yellow)),
                 Span::raw(" Search  "),
                 Span::styled(":", Style::default().fg(Color::Yellow)),
@@ -817,6 +856,14 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw("Type window number to jump  "),
                 Span::styled("Enter", Style::default().fg(Color::Yellow)),
                 Span::raw(" Switch  "),
+                Span::styled("Esc", Style::default().fg(Color::Yellow)),
+                Span::raw(" Cancel"),
+            ]),
+        ],
+        InputMode::RenamingDimension | InputMode::RenamingTab => vec![
+            Line::from(vec![
+                Span::styled("Enter", Style::default().fg(Color::Yellow)),
+                Span::raw(" Confirm  "),
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::raw(" Cancel"),
             ]),

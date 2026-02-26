@@ -99,6 +99,10 @@ bind Space display-popup -E -w 80% -h 80% "dimensions"
 - `d` - **Context-sensitive delete** (prompts for confirmation):
   - If tab is selected: Delete that tab
   - If on dimension: Delete entire dimension
+  - If deleting your last tab or current dimension, automatically switches to the first available tab (or a scratch session as fallback)
+- `r` - **Context-sensitive rename**:
+  - If tab is selected: Rename that tab
+  - If on dimension: Rename the dimension (also renames the live tmux session)
 - `/` - **Fuzzy search** across all dimensions and tabs (live updates)
 - `:` - Jump to a tab in the dimension you are hovering over
   - If you are hovering on a dimension typing `:2` will go to the third tab, finishing with `Enter` will bring you right in
@@ -150,7 +154,6 @@ Dimensions checks GitHub Releases once per day to show a "New version available"
 
 PRs welcome! Some ideas:
 
-- Edit dimension/tab names in place
 - Support for saving/restoring working directories
 - Mouse support
 - Color themes

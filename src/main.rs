@@ -197,7 +197,7 @@ fn run_app<B: ratatui::backend::Backend>(
 
                 let result = match app.input_mode {
                     InputMode::Normal => handle_normal_mode(app, key.code),
-                    InputMode::CreatingDimension | InputMode::CreatingDimensionDirectory | InputMode::AddingTab | InputMode::Searching | InputMode::JumpingToTab => {
+                    InputMode::CreatingDimension | InputMode::CreatingDimensionDirectory | InputMode::AddingTab | InputMode::Searching | InputMode::JumpingToTab | InputMode::RenamingDimension | InputMode::RenamingTab => {
                         handle_input_mode(app, key.code)
                     }
                     InputMode::DeletingDimension | InputMode::DeletingTab => handle_delete_mode(app, key.code),
@@ -236,6 +236,14 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
                 app.start_delete_tab();
             } else {
                 app.start_delete_dimension();
+            }
+        }
+        KeyCode::Char('r') => {
+            // Context-sensitive rename: tab if selected, otherwise dimension
+            if app.selected_tab.is_some() {
+                app.start_rename_tab();
+            } else {
+                app.start_rename_dimension();
             }
         }
         KeyCode::Char('/') => app.start_search(),

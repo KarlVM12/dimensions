@@ -5,6 +5,20 @@ All notable changes to Dimensions will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.20] - 2026-02-25
+
+### Added
+- Rename dimensions and tabs in place with `r` (context-sensitive: renames tab if one is selected, otherwise renames the dimension)
+  - Dimension rename also renames the live tmux session
+  - Input pre-filled with current name for easy editing
+  - Duplicate dimension names are blocked with an inline error message
+- MIT LICENSE file added to the repository
+
+### Fixed
+- Deleting the last tab of your current dimension no longer closes tmux — switches to the first available dimension session (or a `scratch` session as fallback) before killing the session
+- Deleting your current dimension no longer closes tmux — same safe-switch behaviour applies
+- Delete confirmation prompt now says "Will switch to first available tab" when the action would affect your current session
+
 ## [0.2.19] - 2026-01-05
 
 ### Fixed
@@ -214,6 +228,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `x` - Remove tab
 - `q` - Quit and detach from tmux
 
+[0.2.20]: https://github.com/KarlVM12/Dimensions/compare/v0.2.19...v0.2.20
 [0.2.19]: https://github.com/KarlVM12/Dimensions/compare/v0.2.18...v0.2.19
 [0.2.18]: https://github.com/KarlVM12/Dimensions/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/KarlVM12/Dimensions/compare/v0.2.16...v0.2.17

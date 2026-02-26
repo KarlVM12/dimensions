@@ -16,6 +16,8 @@ pub enum InputMode {
     AddingTab,
     DeletingDimension,
     DeletingTab,
+    RenamingDimension,
+    RenamingTab,
     Searching,
     JumpingToTab,
 }
@@ -311,21 +313,26 @@ impl App {
         }
         self.selected_tab = None;
 
-        // Check if we're inside the dimension being deleted
-        let inside_target_dimension = self.current_session.as_ref() == Some(&name.to_string());
+        let inside_target_dimension = self.current_session.as_deref() == Some(name);
 
         // Kill tmux session if it exists
-        // NOTE: If we're inside this dimension, killing it will terminate Dimensions too
-        // But that's okay - config is already saved above, nothing we can really do about that one
         if Tmux::session_exists(name) {
+            if inside_target_dimension && Tmux::is_inside_session() {
+                // Switch away before killing our own session
+                let (fallback_session, fallback_window) =
+                    self.find_or_create_fallback_session(name)?;
+                let target = format!("{}:{}", fallback_session, fallback_window);
+                Tmux::switch_session(&target)?;
+            }
             Tmux::kill_session(name)?;
+
+            if inside_target_dimension {
+                self.quit_without_detach();
+                return Ok(());
+            }
         }
 
-        // This code only runs if we weren't inside the deleted dimension
-        if !inside_target_dimension {
-            self.set_message(format!("Deleted dimension: {}", name));
-        }
-
+        self.set_message(format!("Deleted dimension: {}", name));
         Ok(())
     }
 
@@ -472,6 +479,41 @@ impl App {
                 {
                     let window_idx = *window_idx;
                     let window_name = window_name.clone();
+                    let is_last_window = windows.len() == 1;
+                    let is_current_session =
+                        self.current_session.as_deref() == Some(session_name.as_str());
+
+                    if is_last_window && is_current_session && Tmux::is_inside_session() {
+                        // About to kill the last window of the session we're in.
+                        // Find somewhere safe to land before the session disappears.
+                        let (fallback_session, fallback_window) =
+                            self.find_or_create_fallback_session(&session_name)?;
+
+                        // Update config before killing
+                        if let Some(dimension) =
+                            self.config.dimensions.get_mut(self.selected_dimension)
+                        {
+                            if let Some(config_index) = dimension
+                                .configured_tabs
+                                .iter()
+                                .position(|t| t.name == window_name)
+                            {
+                                dimension.remove_tab(config_index);
+                            }
+                        }
+                        self.save_config()?;
+
+                        // Switch the client to the fallback before the session dies
+                        let target = format!("{}:{}", fallback_session, fallback_window);
+                        Tmux::switch_session(&target)?;
+
+                        // Kill the last window (kills the session)
+                        Tmux::kill_window(&session_name, window_idx)?;
+
+                        self.selected_tab = None;
+                        self.quit_without_detach();
+                        return Ok(());
+                    }
 
                     // Kill the tmux window
                     Tmux::kill_window(&session_name, window_idx)?;
@@ -546,6 +588,39 @@ impl App {
         self.clear_message();
     }
 
+    pub fn start_rename_dimension(&mut self) {
+        if let Some(dim) = self.config.dimensions.get(self.selected_dimension) {
+            self.input_buffer = dim.name.clone();
+            self.input_mode = InputMode::RenamingDimension;
+            self.clear_message();
+        }
+    }
+
+    pub fn start_rename_tab(&mut self) {
+        if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
+            if let Some(tab_index) = self.selected_tab {
+                let current_name = if Tmux::session_exists(&dimension.name) {
+                    Tmux::list_windows(&dimension.name)
+                        .ok()
+                        .and_then(|windows| {
+                            windows.iter()
+                                .find(|(idx, _)| *idx == tab_index)
+                                .map(|(_, name)| name.clone())
+                        })
+                        .unwrap_or_default()
+                } else {
+                    dimension.configured_tabs
+                        .get(tab_index)
+                        .map(|t| t.name.clone())
+                        .unwrap_or_default()
+                };
+                self.input_buffer = current_name;
+                self.input_mode = InputMode::RenamingTab;
+                self.clear_message();
+            }
+        }
+    }
+
     pub fn start_delete_dimension(&mut self) {
         self.input_mode = InputMode::DeletingDimension;
         self.clear_message();
@@ -554,6 +629,78 @@ impl App {
     pub fn start_delete_tab(&mut self) {
         self.input_mode = InputMode::DeletingTab;
         self.clear_message();
+    }
+
+    pub fn rename_dimension(&mut self, new_name: String) -> Result<()> {
+        if new_name.is_empty() {
+            return Ok(());
+        }
+
+        if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
+            if dimension.name == new_name {
+                return Ok(());
+            }
+        }
+
+        if self.config.dimensions.iter().any(|d| d.name == new_name) {
+            self.set_message(format!("Dimension '{}' already exists", new_name));
+            return Ok(());
+        }
+
+        if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
+            let old_name = dimension.name.clone();
+
+            if Tmux::session_exists(&old_name) {
+                Tmux::rename_session(&old_name, &new_name)?;
+            }
+
+            if self.current_session.as_deref() == Some(old_name.as_str()) {
+                self.current_session = Some(new_name.clone());
+            }
+
+            dimension.name = new_name.clone();
+            self.save_config()?;
+            self.set_message(format!("Renamed to '{}'", new_name));
+        }
+
+        Ok(())
+    }
+
+    pub fn rename_tab(&mut self, new_name: String) -> Result<()> {
+        if new_name.is_empty() {
+            return Ok(());
+        }
+
+        let Some(tab_index) = self.selected_tab else {
+            return Ok(());
+        };
+
+        let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) else {
+            return Ok(());
+        };
+
+        let session_name = dimension.name.clone();
+
+        if Tmux::session_exists(&session_name) {
+            let windows = Tmux::list_windows(&session_name)?;
+            let old_name = windows.iter()
+                .find(|(idx, _)| *idx == tab_index)
+                .map(|(_, name)| name.clone());
+
+            Tmux::rename_window(&session_name, tab_index, &new_name)?;
+
+            if let Some(old_name) = old_name {
+                if let Some(tab) = dimension.configured_tabs.iter_mut().find(|t| t.name == old_name) {
+                    tab.name = new_name.clone();
+                }
+            }
+        } else if let Some(tab) = dimension.configured_tabs.get_mut(tab_index) {
+            tab.name = new_name.clone();
+        }
+
+        self.save_config()?;
+        self.set_message(format!("Renamed to '{}'", new_name));
+        Ok(())
     }
 
     pub fn start_search(&mut self) {
@@ -763,6 +910,24 @@ impl App {
             }
             InputMode::DeletingTab => {
                 self.remove_tab_from_current_dimension()?;
+            }
+            InputMode::RenamingDimension => {
+                let name = self.input_buffer.trim().to_string();
+                let current_name = self.config.dimensions
+                    .get(self.selected_dimension)
+                    .map(|d| d.name.clone())
+                    .unwrap_or_default();
+                if !name.is_empty() && name != current_name
+                    && self.config.dimensions.iter().any(|d| d.name == name)
+                {
+                    self.set_message(format!("'{}' already exists", name));
+                    return Ok(()); // Stay in rename mode so the user can correct it
+                }
+                self.rename_dimension(name)?;
+            }
+            InputMode::RenamingTab => {
+                let name = self.input_buffer.trim().to_string();
+                self.rename_tab(name)?;
             }
             InputMode::Searching => {
                 // Live search updates query as user types, so nothing to do here
@@ -1005,5 +1170,24 @@ impl App {
         self.preview_content = None;
         self.preview_session = None;
         self.preview_window = None;
+    }
+
+    /// Find the first active dimension session other than `excluded`, or create a
+    /// plain "scratch" session as a last resort. Returns (session_name, window_index).
+    fn find_or_create_fallback_session(&self, excluded_session: &str) -> Result<(String, usize)> {
+        for dimension in &self.config.dimensions {
+            if dimension.name != excluded_session && Tmux::session_exists(&dimension.name) {
+                let window = Tmux::get_first_window_index(&dimension.name).unwrap_or(0);
+                return Ok((dimension.name.clone(), window));
+            }
+        }
+
+        // No other dimension sessions — use a plain scratch session
+        let name = "scratch";
+        if !Tmux::session_exists(name) {
+            Tmux::create_session(name, true)?;
+        }
+        let window = Tmux::get_first_window_index(name).unwrap_or(0);
+        Ok((name.to_string(), window))
     }
 }
