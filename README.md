@@ -42,6 +42,12 @@ Key features:
 **Install Dimensions:**
 
 ```bash
+brew install KarlVM12/tap/dimensions
+```
+
+Or via curl:
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/KarlVM12/Dimensions/master/install.sh | sh
 ```
 
