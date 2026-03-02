@@ -112,6 +112,7 @@ bind Space display-popup -E -w 80% -h 80% "dimensions"
 - `/` - **Fuzzy search** across all dimensions and tabs (live updates)
 - `:` - Jump to a tab in the dimension you are hovering over
   - If you are hovering on a dimension typing `:2` will go to the third tab, finishing with `Enter` will bring you right in
+- `G` - Switch to the last/newest tab in the selected dimension
 - `Esc` - Close popup without switching
 - `q` - Quit TUI and detach from tmux
 

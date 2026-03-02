@@ -439,6 +439,20 @@ impl App {
         Ok(())
     }
 
+    pub fn switch_to_last_tab_in_dimension(&mut self) -> Result<()> {
+        if let Some(dimension) = self.config.dimensions.get(self.selected_dimension) {
+            let session_name = dimension.name.clone();
+            if Tmux::session_exists(&session_name) {
+                let windows = Tmux::list_windows(&session_name).unwrap_or_default();
+                self.selected_tab = windows.last().map(|(idx, _)| *idx);
+            } else {
+                let tab_count = dimension.configured_tabs.len();
+                self.selected_tab = if tab_count > 0 { Some(tab_count - 1) } else { None };
+            }
+        }
+        self.switch_to_dimension()
+    }
+
     // Tab operations
     pub fn add_tab_to_current_dimension(&mut self, name: String, command: Option<String>) -> Result<()> {
         if let Some(dimension) = self.config.dimensions.get_mut(self.selected_dimension) {
@@ -449,9 +463,17 @@ impl App {
             let tab = Tab::new(name.clone(), command.clone(), working_dir.clone());
             dimension.add_tab(tab);
 
+            let session_name = dimension.name.clone();
+            let new_config_index = dimension.configured_tabs.len() - 1;
+
             // Create window in tmux if session exists
-            if Tmux::session_exists(&dimension.name) {
-                Tmux::new_window(&dimension.name, &name, command.as_deref(), working_dir.as_deref())?;
+            if Tmux::session_exists(&session_name) {
+                Tmux::new_window(&session_name, &name, command.as_deref(), working_dir.as_deref())?;
+                // Select the newly created window
+                let windows = Tmux::list_windows(&session_name).unwrap_or_default();
+                self.selected_tab = windows.last().map(|(idx, _)| *idx);
+            } else {
+                self.selected_tab = Some(new_config_index);
             }
 
             self.save_config()?;

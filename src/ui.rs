@@ -793,6 +793,8 @@ fn render_help(f: &mut Frame, app: &App, area: Rect) {
                 Span::raw(" Search  "),
                 Span::styled(":", Style::default().fg(Color::Yellow)),
                 Span::raw(" Jump  "),
+                Span::styled("G", Style::default().fg(Color::Yellow)),
+                Span::raw(" Last tab  "),
                 Span::styled("Esc", Style::default().fg(Color::Yellow)),
                 Span::raw(" Close  "),
                 Span::styled("q", Style::default().fg(Color::Yellow)),

@@ -8,7 +8,7 @@ mod update;
 use anyhow::Result;
 use app::{App, InputMode};
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -196,7 +196,7 @@ fn run_app<B: ratatui::backend::Backend>(
                 }
 
                 let result = match app.input_mode {
-                    InputMode::Normal => handle_normal_mode(app, key.code),
+                    InputMode::Normal => handle_normal_mode(app, key),
                     InputMode::CreatingDimension | InputMode::CreatingDimensionDirectory | InputMode::AddingTab | InputMode::Searching | InputMode::JumpingToTab | InputMode::RenamingDimension | InputMode::RenamingTab => {
                         handle_input_mode(app, key.code)
                     }
@@ -220,8 +220,8 @@ fn run_app<B: ratatui::backend::Backend>(
     Ok(())
 }
 
-fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
-    match key {
+fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Result<()> {
+    match key.code {
         KeyCode::Char('q') => app.quit(),
         KeyCode::Esc => app.close_popup(),
         KeyCode::Char('j') | KeyCode::Down => app.next_dimension(),
@@ -255,6 +255,12 @@ fn handle_normal_mode(app: &mut App, key: KeyCode) -> Result<()> {
         }
         KeyCode::Enter => {
             if let Err(e) = app.switch_to_dimension() {
+                app.set_message(format!("Error: {}", e));
+            }
+        }
+        KeyCode::Char('G') => {
+            // Switch to last/newest tab in the selected dimension
+            if let Err(e) = app.switch_to_last_tab_in_dimension() {
                 app.set_message(format!("Error: {}", e));
             }
         }
